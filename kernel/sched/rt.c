@@ -162,6 +162,9 @@ static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se)
 	struct rq *rq = rq_of_rt_rq(rt_rq);
 	struct task_struct *p;
 
+	if (dl_se->my_q->rt.rt_nr_running == 0)
+		return NULL;
+
 	p = _pick_next_task_rt(rt_rq);
 	set_next_task_rt(rq, p, true);
 
