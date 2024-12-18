@@ -2720,120 +2720,109 @@ struct rt_schedulable_multi_data {
 	int cid;
 };
 
-// static int tg_rt_schedulable_multi(struct task_group *tg, void *data)
-// {
-// 	struct rt_schedulable_multi_data *d = data;
-// 	struct task_group *child;
-// 	unsigned long total, sum = 0;
-// 	u64 period, runtime;
-// 	int cid;
+static int tg_rt_schedulable_multi(struct task_group *tg, void *data)
+{
+	struct rt_schedulable_multi_data *d = data;
+	struct task_group *child;
+	unsigned long total, sum = 0;
+	u64 period, runtime;
+	int cid;
 
-// 	cid = d->cid;
+	cid = d->cid;
+	period = tg->dl_bandwidth.dl_period;
 
-// 	period = tg->dl_bandwidth.dl_period;
+	/*
+     * Root task group runtime has to be applied to every cpu
+	 */
+	if (tg == &root_task_group)
+		runtime = tg->dl_bandwidth.dl_runtime;
+	else
+		runtime = tg->dl_se[cid]->dl_runtime;
 
-// 	/*
-//      * Root task group runtime has to be applied to every cpu
-// 	 */
-// 	if (tg == &root_task_group)
-// 		runtime = tg->dl_bandwidth.dl_runtime;
-// 	/*
-// 	 * Check if dl_se has been initialized.
-// 	 */
-// 	else if (tg->dl_se[cid] == NULL)
-// 		runtime = 0;
-// 	else
-// 		runtime = tg->dl_se[cid]->dl_runtime;
+	if (tg == d->tg) {
+		period = d->rt_period;
+		runtime = d->rt_runtime;
+	}
 
-// 	if (tg == d->tg) {
-// 		period = d->rt_period;
-// 		runtime = d->rt_runtime;
-// 	}
+	/*
+	 * Cannot have more runtime than the period.
+	 */
+	if (runtime > period && runtime != RUNTIME_INF) {
+		printk("tg_rt_schedulable: runtime greater than zero and different from RUNTIME_INF:\truntime=%lld\tperiod=%lld\n",
+		       runtime, period);
+		return -EINVAL;
+	}
 
-// 	/*
-// 	 * Cannot have more runtime than the period.
-// 	 */
-// 	if (runtime > period && runtime != RUNTIME_INF) {
-// 		printk("tg_rt_schedulable: runtime greater than zero and different from RUNTIME_INF:\truntime=%lld\tperiod=%lld\n",
-// 		       runtime, period);
-// 		return -EINVAL;
-// 	}
+	/*
+	 * Ensure we don't starve existing RT tasks if runtime turns zero.
+	 */
+	if (dl_bandwidth_enabled() && !runtime && tg_has_rt_tasks(tg))
+		return -EBUSY;
 
+	total = to_ratio(period, runtime);
 
-// 	total = to_ratio(period, runtime);
+	/*
+	 * Nobody can have more than the global setting allows.
+	 */
+	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
+		printk("tg_rt_schedulable: demanded utilization greater than global available:\ttotal=%ld\tglobal=%ld\n",
+		       total,
+		       to_ratio(global_rt_period(), global_rt_runtime()));
+		return -EINVAL;
+	}
 
-// 	/*
-// 	 * Nobody can have more than the global setting allows.
-// 	 */
-// 	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
-// 		printk("tg_rt_schedulable: demanded utilization greater than global available:\ttotal=%ld\tglobal=%ld\n",
-// 		       total,
-// 		       to_ratio(global_rt_period(), global_rt_runtime()));
-// 		return -EINVAL;
-// 	}
+	if (tg == &root_task_group) {
+		rcu_read_lock_sched();
+		if (!dl_check_tg(total))
+			return -EBUSY;
+		rcu_read_unlock_sched();
+	}
 
-// 	if (tg == &root_task_group) {
-// 		if (!dl_check_tg(total))
-// 			return -EBUSY;
-// 	}
+	/*
+	 * The sum of our children's runtime should not exceed our own.
+	 */
+	list_for_each_entry_rcu(child, &tg->children, siblings) {
+		period  = child->dl_bandwidth.dl_period;
+		runtime = child->dl_se[cid]->dl_runtime;
 
-// 	/*
-// 	 * The sum of our children's runtime should not exceed our own.
-// 	 */
-// 	list_for_each_entry_rcu(child, &tg->children, siblings) {
-// 		period  = child->dl_bandwidth.dl_period;
+		if (child == d->tg) {
+			period = d->rt_period;
+			runtime = d->rt_runtime;
+		}
 
-// 		/*
-// 		 * This should not happen.
-// 		 */
-// 		if (child == &root_task_group)
-// 			runtime = child->dl_bandwidth.dl_runtime;
-// 		/*
-// 		 * Check if dl_se has been initialized.
-// 		 */
-// 		else if (child->dl_se[cid] == NULL)
-// 			runtime = 0;
-// 		else
-// 			runtime = child->dl_se[cid]->dl_runtime;
+		sum += to_ratio(period, runtime);
+	}
 
-// 		if (child == d->tg) {
-// 			period = d->rt_period;
-// 			runtime = d->rt_runtime;
-// 		}
+	if (sum > total)
+		return -EINVAL;
 
-// 		sum += to_ratio(period, runtime);
-// 	}
+	return 0;
+}
 
-// 	if (sum > total)
-// 		return -EINVAL;
+static int __rt_schedulable_multi(struct task_group *tg, u64 period, u64 runtime,
+								  int cid)
+{
+	int ret;
 
-// 	return 0;
-// }
+	struct rt_schedulable_multi_data data = {
+		.tg = tg,
+		.rt_period = period,
+		.rt_runtime = runtime,
+		.cid = cid,
+	};
 
-// static int __rt_schedulable_multi(struct task_group *tg, u64 period, u64 runtime, 
-// 								  int cid)
-// {
-// 	int ret;
+	if (runtime > period || (runtime != 0 && runtime < (2 << (DL_SCALE - 1)))) {
+		printk("__rt_schedulable: runtime greater than period or less than one microsecond:\truntime=%lld\tperiod=%lld\n",
+		       runtime, period);
+		return -EINVAL;
+	}
 
-// 	struct rt_schedulable_multi_data data = {
-// 		.tg = tg,
-// 		.rt_period = period,
-// 		.rt_runtime = runtime,
-// 		.cid = cid,
-// 	};
+	rcu_read_lock();
+	ret = walk_tg_tree(tg_rt_schedulable_multi, tg_nop, &data);
+	rcu_read_unlock();
 
-// 	if (runtime > period || (runtime != 0 && runtime < (2 << (DL_SCALE - 1)))) {
-// 		printk("__rt_schedulable: runtime greater than period or less than one microsecond:\truntime=%lld\tperiod=%lld\n",
-// 		       runtime, period);
-// 		return -EINVAL;
-// 	}
-
-// 	rcu_read_lock();
-// 	ret = walk_tg_tree(tg_rt_schedulable_multi, tg_nop, &data);
-// 	rcu_read_unlock();
-
-// 	return ret;
-// }
+	return ret;
+}
 
 static u64 avg_cpus_runtime(struct task_group *tg, int cid, u64 rt_runtime)
 {
@@ -2876,8 +2865,8 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 
 	mutex_lock(&rt_constraints_mutex);
 	read_lock(&tasklist_lock);
-	// err = __rt_schedulable_multi(tg, rt_period, rt_runtime, cid);
-	err = __rt_schedulable(tg, rt_period, runtime);
+	err = __rt_schedulable_multi(tg, rt_period, rt_runtime, cid);
+	// err = __rt_schedulable(tg, rt_period, runtime);
 	if (err)
 		goto unlock;
 
