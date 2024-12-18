@@ -2735,6 +2735,9 @@ int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us)
 	else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
 		return -EINVAL;
 
+	if (tg_has_rt_tasks(tg) && rt_runtime_us == 0)
+		return -EINVAL;
+
 	for_each_present_cpu(i) {
 		err = tg_set_rt_bandwidth(tg, rt_period, rt_runtime, i);
 		if (err)
