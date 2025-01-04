@@ -1733,6 +1733,9 @@ void dl_server_update_idle(struct sched_dl_entity *dl_se, s64 delta_exec)
 
 void dl_server_update(struct sched_dl_entity *dl_se, s64 delta_exec)
 {
+	if (!dl_server(dl_se))
+		return;
+
 	/* 0 runtime = fair server disabled */
 	if (dl_se->dl_server_active && dl_se->dl_runtime)
 		update_curr_dl_se(rq_of_dl_se(dl_se), dl_se, delta_exec);
