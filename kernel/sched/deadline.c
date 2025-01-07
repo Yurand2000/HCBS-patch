@@ -239,8 +239,15 @@ void __dl_add(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
 static inline bool
 __dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
 {
+	u64 dl_groups_root = 0;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+	dl_groups_root = to_ratio(root_task_group.dl_bandwidth.dl_period,
+				  root_task_group.dl_bandwidth.dl_runtime);
+#endif
 	return dl_b->bw != -1 &&
-	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw;
+	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
+					+ cap_scale(dl_groups_root, cap);
 }
 
 static inline
@@ -342,6 +349,90 @@ static void dl_rq_change_utilization(struct rq *rq, struct sched_dl_entity *dl_s
 	__sub_rq_bw(dl_se->dl_bw, &rq->dl);
 	__add_rq_bw(new_bw, &rq->dl);
 }
+
+/* Used for dl_bw check and update, used under sched_rt_handler()::mutex */
+static u64 dl_generation;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+int dl_check_tg(unsigned long total)
+{
+	unsigned long flags;
+	int which_cpu;
+	int cpus;
+	struct dl_bw *dl_b;
+	u64 gen = ++dl_generation;
+
+	for_each_possible_cpu(which_cpu) {
+		rcu_read_lock_sched();
+
+		if (!dl_bw_visited(which_cpu, gen)) {
+			cpus = dl_bw_cpus(which_cpu);
+			dl_b = dl_bw_of(which_cpu);
+
+			raw_spin_lock_irqsave(&dl_b->lock, flags);
+
+			if (dl_b->bw != -1 &&
+			    dl_b->bw * cpus < dl_b->total_bw + total * cpus) {
+				raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+				rcu_read_unlock_sched();
+
+				return 0;
+			}
+
+			raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+		}
+
+		rcu_read_unlock_sched();
+	}
+
+	return 1;
+}
+
+int dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
+{
+	struct rq *rq = container_of(dl_se->dl_rq, struct rq, dl);
+	int is_active;
+	u64 old_runtime;
+
+	/*
+	 * Since we truncate DL_SCALE bits, make sure we're at least
+	 * that big.
+	 */
+	if (rt_runtime != 0 && rt_runtime < (1ULL << DL_SCALE))
+		return 0;
+
+	/*
+	 * Since we use the MSB for wrap-around and sign issues, make
+	 * sure it's not set (mind that period can be equal to zero).
+	 */
+	if (rt_period & (1ULL << 63))
+		return 0;
+
+	raw_spin_rq_lock_irq(rq);
+	is_active = dl_se->my_q->rt.rt_nr_running > 0;
+	old_runtime = dl_se->dl_runtime;
+	dl_se->dl_runtime  = rt_runtime;
+	dl_se->dl_period   = rt_period;
+	dl_se->dl_deadline = dl_se->dl_period;
+	if (is_active) {
+		sub_running_bw(dl_se, dl_se->dl_rq);
+	} else if (dl_se->dl_non_contending) {
+		sub_running_bw(dl_se, dl_se->dl_rq);
+		dl_se->dl_non_contending = 0;
+		hrtimer_try_to_cancel(&dl_se->inactive_timer);
+	}
+	__sub_rq_bw(dl_se->dl_bw, dl_se->dl_rq);
+	dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
+	__add_rq_bw(dl_se->dl_bw, dl_se->dl_rq);
+
+	if (is_active)
+		add_running_bw(dl_se, dl_se->dl_rq);
+
+	raw_spin_rq_unlock_irq(rq);
+
+	return 1;
+}
+#endif
 
 static void dl_change_utilization(struct task_struct *p, u64 new_bw)
 {
@@ -518,6 +609,14 @@ static inline int is_leftmost(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq
 }
 
 static void init_dl_rq_bw_ratio(struct dl_rq *dl_rq);
+
+void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
+{
+	raw_spin_lock_init(&dl_b->dl_runtime_lock);
+	dl_b->dl_period = period;
+	dl_b->dl_runtime = runtime;
+}
+
 
 void init_dl_bw(struct dl_bw *dl_b)
 {
@@ -1635,13 +1734,15 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 	 * this before getting generic.
 	 */
 	if (!dl_server(dl_se)) {
-		u64 runtime =  50 * NSEC_PER_MSEC;
-		u64 period = 1000 * NSEC_PER_MSEC;
-
 		dl_se->dl_server = 1;
-		dl_server_apply_params(dl_se, runtime, period, 1);
+		if (dl_se == &rq_of_dl_se(dl_se)->fair_server) {
+			u64 runtime =  50 * NSEC_PER_MSEC;
+			u64 period = 1000 * NSEC_PER_MSEC;
 
-		dl_se->dl_defer = 1;
+			BUG_ON(dl_server_apply_params(dl_se, runtime, period, 1));
+
+			dl_se->dl_defer = 1;
+		}
 		setup_new_dl_entity(dl_se);
 	}
 
@@ -1650,13 +1751,14 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 
 	dl_se->dl_server_active = 1;
 	enqueue_dl_entity(dl_se, ENQUEUE_WAKEUP);
-			rq = rq_of_dl_se(dl_se);
+	rq = rq_of_dl_se(dl_se);
 	if (!dl_task(rq->curr) || dl_entity_preempt(dl_se, &rq->curr->dl))
 		resched_curr(rq);
 }
 
 void dl_server_stop(struct sched_dl_entity *dl_se)
 {
+//	if (!dl_server(dl_se)) return;	TODO: Check if the following is equivalent to this!!!
 	if (!dl_se->dl_runtime)
 		return;
 
@@ -1880,7 +1982,13 @@ void inc_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	u64 deadline = dl_se->deadline;
 
 	dl_rq->dl_nr_running++;
-	add_nr_running(rq_of_dl_rq(dl_rq), 1);
+	if (!dl_server(dl_se) || dl_se == &rq_of_dl_rq(dl_rq)->fair_server) {
+		add_nr_running(rq_of_dl_rq(dl_rq), 1);
+	} else {
+		struct rt_rq *rt_rq = &dl_se->my_q->rt;
+
+		add_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	}
 
 	inc_dl_deadline(dl_rq, deadline);
 }
@@ -1890,7 +1998,13 @@ void dec_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 {
 	WARN_ON(!dl_rq->dl_nr_running);
 	dl_rq->dl_nr_running--;
-	sub_nr_running(rq_of_dl_rq(dl_rq), 1);
+	if ((!dl_server(dl_se)) || dl_se == &rq_of_dl_rq(dl_rq)->fair_server) {
+		sub_nr_running(rq_of_dl_rq(dl_rq), 1);
+	} else {
+		struct rt_rq *rt_rq = &dl_se->my_q->rt;
+
+		sub_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	}
 
 	dec_dl_deadline(dl_rq, dl_se->deadline);
 }
@@ -3153,9 +3267,6 @@ DEFINE_SCHED_CLASS(dl) = {
 	.task_is_throttled	= task_is_throttled_dl,
 #endif
 };
-
-/* Used for dl_bw check and update, used under sched_rt_handler()::mutex */
-static u64 dl_generation;
 
 int sched_dl_global_validate(void)
 {
