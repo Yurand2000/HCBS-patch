@@ -410,6 +410,50 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 	return has_active_siblings;
 }
 
+/*
+ * Handle parent bandwidth accounting when child runtime changes:
+ * - When disabling the last child, the parent becomes a leaf group,
+ *   and so the parent's bandwidth must be accounted back.
+ * - When enabling the first child, the parent becomes a non-leaf group,
+ *   and so the parent's bandwidth must be removed.
+ * Only leaf groups (those without active children) have non-zero bandwidth.
+ */
+static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64 old_runtime)
+{
+	int i, other_cpus_active;
+
+	if (tg->parent == NULL || tg->parent == &root_task_group)
+		return;
+
+	other_cpus_active = 0;
+	for_each_online_cpu(i) {
+		if (i == cpu)
+			continue;
+
+		if (tg->dl_se[i]->dl_runtime) {
+			other_cpus_active = 1;
+			break;
+		}
+	}
+
+	if (other_cpus_active)
+		return;
+
+	if (rt_runtime == 0 && old_runtime != 0 &&
+	    !sched_group_has_live_siblings(tg)) {
+		for_each_online_cpu(i) {
+			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
+		}
+	} else if (rt_runtime != 0 && old_runtime == 0 &&
+		   !sched_group_has_live_siblings(tg)) {
+		for_each_online_cpu(i) {
+			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
+		}
+	}
+}
+
 void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 {
 	struct sched_dl_entity *dl_se = tg->dl_se[cpu];
@@ -419,7 +463,8 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	is_live_group = is_live_sched_group(tg);
 
-	guard(raw_spin_rq_lock_irq)(rq);
+	scoped_guard(raw_spin_rq_lock_irq, rq) {
+
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
 
 	update_rq_clock(rq);
@@ -440,26 +485,12 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 	dl_se->dl_bw = new_bw;
 	dl_se->dl_density = new_bw;
 
-	/*
-	 * Handle parent bandwidth accounting when child runtime changes:
-	 * - When disabling the last child, the parent becomes a leaf group,
-	 *   and so the parent's bandwidth must be accounted back.
-	 * - When enabling the first child, the parent becomes a non-leaf group,
-	 *   and so the parent's bandwidth must be removed.
-	 * Only leaf groups (those without active children) have non-zero bandwidth.
-	 */
-	if (tg->parent && tg->parent != &root_task_group) {
-		if (rt_runtime == 0 && old_runtime != 0 &&
-		    !sched_group_has_live_siblings(tg)) {
-			__add_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		} else if (rt_runtime != 0 && old_runtime == 0 &&
-			   !sched_group_has_live_siblings(tg)) {
-			__sub_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		}
-	}
-
 	if (is_active)
 		dl_server_start(dl_se);
+
+	}
+
+	update_parent_bw(tg, cpu, rt_runtime, old_runtime);
 }
 #endif
 
