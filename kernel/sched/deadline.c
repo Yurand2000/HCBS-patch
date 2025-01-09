@@ -465,6 +465,39 @@ static inline bool sched_group_has_active_siblings(struct task_group *tg)
 	return has_active_siblings;
 }
 
+static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64 old_runtime)
+{
+	int i, other_cpus_active;
+
+	if (tg->parent && tg->parent != &root_task_group)
+	{
+		other_cpus_active = 0;
+		for_each_online_cpu (i) {
+			if (i == cpu)
+				continue;
+
+			if (tg->dl_se[i]->dl_runtime) {
+				other_cpus_active = 1;
+				break;
+			}
+		}
+
+		if (rt_runtime == 0 && old_runtime != 0 && !other_cpus_active && !sched_group_has_active_siblings(tg)) {
+			for_each_online_cpu(i) {
+				raw_spin_rq_lock_irq(cpu_rq(i));
+				__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
+				raw_spin_rq_unlock_irq(cpu_rq(i));
+			}
+		} else if (rt_runtime != 0 && old_runtime == 0 && !other_cpus_active && !sched_group_has_active_siblings(tg)) {
+			for_each_online_cpu(i) {
+				raw_spin_rq_lock_irq(cpu_rq(i));
+				__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
+				raw_spin_rq_unlock_irq(cpu_rq(i));
+			}
+		}
+	}
+}
+
 void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 {
 	struct sched_dl_entity *dl_se = tg->dl_se[cpu];
@@ -511,21 +544,12 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	dl_se->dl_bw = new_bw;
 	dl_se->dl_density = new_bw;
-
-	// add/remove the parent's bw
-	if (tg->parent && tg->parent != &root_task_group)
-	{
-		if (rt_runtime == 0 && old_runtime != 0 && !sched_group_has_active_siblings(tg)) {
-			__add_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		} else if (rt_runtime != 0 && old_runtime == 0 && !sched_group_has_active_siblings(tg)) {
-			__sub_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		}
-	}
-
+	
 	if (is_active_group && is_active)
 		add_running_bw(dl_se, dl_se->dl_rq);
 
 	raw_spin_rq_unlock_irq(rq);
+	update_parent_bw(tg, cpu, rt_runtime, old_runtime);
 }
 #endif
 
