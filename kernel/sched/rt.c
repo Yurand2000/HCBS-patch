@@ -2632,6 +2632,9 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	u64 period, runtime;
 	int cid;
 
+	if (task_group_is_autogroup(tg))
+		return 0;
+
 	cid = d->cid;
 	period = tg->dl_bandwidth.dl_period;
 
@@ -2686,6 +2689,9 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	 * The sum of our children's runtime should not exceed our own.
 	 */
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
+		if (task_group_is_autogroup(child))
+			continue;
+
 		period  = child->dl_bandwidth.dl_period;
 		runtime = child->dl_se[cid]->dl_runtime;
 
