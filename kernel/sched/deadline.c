@@ -422,10 +422,10 @@ int dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 	int is_active, is_active_group;
 	u64 old_runtime;
 
-	is_active = dl_se->my_q->rt.rt_nr_running > 0;
 	is_active_group = is_active_sched_group(tg);
 
 	raw_spin_rq_lock_irq(rq);
+	is_active = dl_se->my_q->rt.rt_nr_running > 0;
 	old_runtime = dl_se->dl_runtime;
 	dl_se->dl_runtime  = rt_runtime;
 	dl_se->dl_period   = rt_period;
