@@ -422,6 +422,20 @@ int dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 	int is_active, is_active_group;
 	u64 old_runtime;
 
+	/*
+	 * Since we truncate DL_SCALE bits, make sure we're at least
+	 * that big.
+	 */
+	if (rt_runtime < (1ULL << DL_SCALE))
+		return 0;
+
+	/*
+	 * Since we use the MSB for wrap-around and sign issues, make
+	 * sure it's not set (mind that period can be equal to zero).
+	 */
+	if (rt_period & (1ULL << 63))
+	       return 0;
+
 	is_active_group = is_active_sched_group(tg);
 
 	raw_spin_rq_lock_irq(rq);
@@ -455,13 +469,6 @@ int dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 		}
 	}
 
-	/* ??? FIX THIS CRAP! ??? */
-	if (!((s64)(rt_period - rt_runtime) >= 0) ||
-	    !(rt_runtime >= (2 << (DL_SCALE - 1)))) {
-		raw_spin_rq_unlock_irq(rq);
-
-		return 0;
-	}
 	if (is_active_group && is_active)
 		add_running_bw(dl_se, dl_se->dl_rq);
 
