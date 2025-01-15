@@ -350,6 +350,9 @@ static void dl_rq_change_utilization(struct rq *rq, struct sched_dl_entity *dl_s
 	__add_rq_bw(new_bw, &rq->dl);
 }
 
+/* Used for dl_bw check and update, used under sched_rt_handler()::mutex */
+static u64 dl_generation;
+
 #ifdef CONFIG_RT_GROUP_SCHED
 int dl_check_tg(unsigned long total)
 {
@@ -357,22 +360,29 @@ int dl_check_tg(unsigned long total)
 	int which_cpu;
 	int cpus;
 	struct dl_bw *dl_b;
+	u64 gen = ++dl_generation;
 
-	/* WARNING: This is wrong! We need to associate a root domain to the cgroup, but with v1 we probably cannot... */
-	which_cpu = /*rq_of_dl_rq(tg->dl_se[0]->dl_rq)->cpu;*/ cpumask_any_and(cpu_online_mask, /*def_root_domain.span*/cpu_rq(0)->rd->span);
-	cpus = dl_bw_cpus(which_cpu);
-	dl_b = dl_bw_of(which_cpu);
+	for_each_possible_cpu(which_cpu) {
+		rcu_read_lock_sched();
 
-	raw_spin_lock_irqsave(&dl_b->lock, flags);
+		if (!dl_bw_visited(which_cpu, gen)) {
+			cpus = dl_bw_cpus(which_cpu);
+			dl_b = dl_bw_of(which_cpu);
 
-	if (dl_b->bw != -1 &&
-	    dl_b->bw * cpus < dl_b->total_bw + total * cpus) {
-		raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+			raw_spin_lock_irqsave(&dl_b->lock, flags);
 
-		return 0;
+			if (dl_b->bw != -1 &&
+			    dl_b->bw * cpus < dl_b->total_bw + total * cpus) {
+				raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+
+					return 0;
+			}
+
+			raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+		}
+
+		rcu_read_unlock_sched();
 	}
-
-	raw_spin_unlock_irqrestore(&dl_b->lock, flags);
 
 	return 1;
 }
@@ -3260,9 +3270,6 @@ DEFINE_SCHED_CLASS(dl) = {
 	.task_is_throttled	= task_is_throttled_dl,
 #endif
 };
-
-/* Used for dl_bw check and update, used under sched_rt_handler()::mutex */
-static u64 dl_generation;
 
 int sched_dl_global_validate(void)
 {

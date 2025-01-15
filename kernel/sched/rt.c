@@ -2109,10 +2109,8 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 		return -EINVAL;
 
 	if (tg == &root_task_group) {
-		rcu_read_lock_sched();
 		if (!dl_check_tg(total))
 			return -EBUSY;
-		rcu_read_unlock_sched();
 	}
 
 	/*
