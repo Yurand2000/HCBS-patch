@@ -2851,8 +2851,8 @@ int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us)
 	rt_period = rt_period_us * NSEC_PER_USEC;
 
 	for_each_present_cpu (i) {
-		if (tg->dl_se[i] == NULL) {
-			rt_runtime = 0;
+		if (tg == &root_task_group) {
+			rt_runtime = tg->dl_bandwidth.dl_runtime;
 		} else {
 			rt_runtime = tg->dl_se[i]->dl_runtime;
 		}
