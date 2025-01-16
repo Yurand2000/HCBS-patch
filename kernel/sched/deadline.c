@@ -247,7 +247,7 @@ __dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
 #endif
 	return dl_b->bw != -1 &&
 	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
-					+ dl_groups_root * cap;
+					+ cap_scale(dl_groups_root, cap);
 }
 
 static inline
