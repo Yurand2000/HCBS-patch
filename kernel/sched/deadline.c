@@ -1803,9 +1803,9 @@ void dl_server_stop(struct sched_dl_entity *dl_se)
 		return;
 
 	dequeue_dl_entity(dl_se, DEQUEUE_SLEEP);
-	hrtimer_try_to_cancel(&dl_se->dl_timer);
+	//hrtimer_try_to_cancel(&dl_se->dl_timer);
 	dl_se->dl_defer_armed = 0;
-	dl_se->dl_throttled = 0;
+	//dl_se->dl_throttled = 0;
 	dl_se->dl_server_active = 0;
 }
 
