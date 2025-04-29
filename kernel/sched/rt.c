@@ -2396,11 +2396,19 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
 		.rt_runtime = runtime,
 	};
 
-	if (!((s64)(period - runtime) >= 0) ||
-	    (runtime && !(runtime >= (2 << (DL_SCALE - 1))))) {
-
+	/*
+	* Since we truncate DL_SCALE bits, make sure we're at least
+	* that big.
+	*/
+	if (runtime != 0 && runtime < (1ULL << DL_SCALE))
 		return 1;
-	}
+
+	/*
+	* Since we use the MSB for wrap-around and sign issues, make
+	* sure it's not set (mind that period can be equal to zero).
+	*/
+	if (period & (1ULL << 63))
+		return 1;
 
 	rcu_read_lock();
 	ret = walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
