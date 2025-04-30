@@ -8524,7 +8524,7 @@ void __init sched_init(void)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	init_dl_bandwidth(&root_task_group.dl_bandwidth,
-			global_rt_period(), global_rt_runtime());
+			global_rt_period(), 0);
 #endif /* CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -9167,7 +9167,7 @@ static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 	struct cgroup_subsys_state *css;
 
 	cgroup_taskset_for_each(task, css, tset) {
-		if (!sched_rt_can_attach(css_tg(css), task))
+		if (rt_task(task) && !sched_rt_can_attach(css_tg(css), task))
 			return -EINVAL;
 	}
 #endif
@@ -9821,18 +9821,6 @@ static struct cftype cpu_legacy_files[] = {
 	{
 		.name = "stat.local",
 		.seq_show = cpu_cfs_local_stat_show,
-	},
-#endif
-#ifdef CONFIG_RT_GROUP_SCHED
-	{
-		.name = "rt_runtime_us",
-		.read_s64 = cpu_rt_runtime_read,
-		.write_s64 = cpu_rt_runtime_write,
-	},
-	{
-		.name = "rt_period_us",
-		.read_u64 = cpu_rt_period_read_uint,
-		.write_u64 = cpu_rt_period_write_uint,
 	},
 #endif
 #ifdef CONFIG_UCLAMP_TASK_GROUP
