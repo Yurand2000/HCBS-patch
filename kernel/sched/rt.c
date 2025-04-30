@@ -2423,13 +2423,6 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	int i, err = 0;
 
 	/*
-	 * Disallowing the root group RT runtime is BAD, it would disallow the
-	 * kernel creating (and or operating) RT threads.
-	 */
-	if (tg == &root_task_group && rt_runtime == 0)
-		return -EINVAL;
-
-	/*
 	 * Do not allow to set a RT runtime > 0 if the parent has RT tasks
 	 * (and is not the root group)
 	 */
@@ -2530,20 +2523,21 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg, struct task_struct *tsk)
 {
+	struct task_group *child;
 	int can_attach = 1;
 
+	/* Allow executing in the root cgroup regardless of allowed bandwidth */
+	if (tg == &root_task_group)
+		return 1;
+
 	/* Don't accept real-time tasks when there is no way for them to run */
-	if (rt_task(tsk) && tg->dl_bandwidth.dl_runtime == 0)
+	if (tg->dl_bandwidth.dl_runtime == 0)
 		return 0;
 
 	/* If one of the children has runtime > 0, cannot attach RT tasks! */
-	if ((tg != &root_task_group) && rt_task(tsk)) {
-		struct task_group *child;
-
-		list_for_each_entry_rcu(child, &tg->children, siblings) {
-			if (child->dl_bandwidth.dl_runtime) {
-				can_attach = 0;
-			}
+	list_for_each_entry_rcu(child, &tg->children, siblings) {
+		if (child->dl_bandwidth.dl_runtime) {
+			can_attach = 0;
 		}
 	}
 
