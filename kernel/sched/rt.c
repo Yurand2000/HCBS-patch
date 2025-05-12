@@ -629,12 +629,15 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 
 	inc_rt_prio(rt_rq, prio);
 
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
 			add_nr_running(rq_of_rt_rq(rt_rq), 1);
-	} else {
+	} else
+#endif
+	{
 		add_nr_running(rq_of_rt_rq(rt_rq), 1);
 	}
 }
@@ -647,12 +650,16 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	rt_rq->rr_nr_running -= rt_se_rr_nr_running(rt_se);
 
 	dec_rt_prio(rt_rq, rt_se_prio(rt_se));
+
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
 			sub_nr_running(rq_of_rt_rq(rt_rq), 1);
-	} else {
+	} else
+#endif
+	{
 		sub_nr_running(rq_of_rt_rq(rt_rq), 1);
 	}
 }
@@ -1016,9 +1023,11 @@ static int balance_rt(struct rq *rq, struct task_struct *p, struct rq_flags *rf)
 		 * not yet started the picking loop.
 		 */
 		rq_unpin_lock(rq, rf);
+#ifdef CONFIG_RT_GROUP_SCHED
 		if (is_dl_group(rt_rq_of_se(&p->rt)))
 			group_pull_rt_task(rt_rq_of_se(&p->rt));
 		else
+#endif
 			pull_rt_task(rq);
 		rq_repin_lock(rq, rf);
 	}
@@ -1104,9 +1113,11 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	if (rq->donor->sched_class != &rt_sched_class)
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq))
 		rt_queue_push_from_group(rq, rt_rq);
 	else
+#endif
 		rt_queue_push_tasks(rq);
 }
 
