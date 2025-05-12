@@ -1,0 +1,43 @@
+name: Create Patchset
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run workflow'
+        required: true
+
+jobs:
+  create-patchset:
+    name: Create Patchset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 100
+      - name: Get First Patch SHA
+        run: |
+          touch /tmp/sha
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          while ! git show $HEAD_SHA | grep -q "Author: Linus"; do
+            git checkout HEAD~1
+            HEAD_SHA=$(git rev-parse HEAD)
+          done
+
+          git checkout ${{ github.event.inputs.branch }}
+
+          echo "Prev-Patch SHA: $HEAD_SHA"
+          echo $HEAD_SHA > /tmp/sha
+      - name: Create Patches
+        run: |
+          mkdir -p /tmp/patches
+          git format-patch -o /tmp/patches $(cat /tmp/sha)
+        shell: bash
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patches
+          path: /tmp/patches

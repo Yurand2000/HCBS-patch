@@ -1,0 +1,112 @@
+name: Compile Patchset
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run workflow'
+        required: true
+
+jobs:
+  get-patches:
+    name: Get Patches
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.output-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 100
+      - name: Get Patches
+        run: |
+          echo "Getting commits..."
+          touch /tmp/matrix
+          HEAD_SHA=$(git rev-parse HEAD)
+          while ! git show $HEAD_SHA | grep -q "Author: Linus"; do
+            echo "Found commit: $HEAD_SHA"
+            echo "$HEAD_SHA" >> /tmp/matrix
+
+            git checkout HEAD~1 > /dev/null 2> /dev/null
+            HEAD_SHA=$(git rev-parse HEAD)
+          done
+
+          echo "Formatting output..."
+          mv /tmp/matrix /tmp/matrix.tmp
+          touch /tmp/matrix
+          echo -n "[" >> /tmp/matrix
+          cat /tmp/matrix.tmp | awk '{printf "\"%s\",", $0}' - | sed 's/,$//' >> /tmp/matrix
+          echo "]" >> /tmp/matrix
+      - name: Output matrix
+        id: output-matrix
+        run: |
+          echo "Output matrix:"
+          cat /tmp/matrix
+          echo "matrix=$(cat /tmp/matrix)" >> $GITHUB_OUTPUT
+  get-configs:
+    name: Get Config File
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.output-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout configs branch
+        uses: actions/checkout@v4
+        with:
+          ref: github-workflow
+          fetch-depth: 1
+      - name: Get configs
+        run: |
+          echo "Getting configs..."
+          find .github/workflows/configs -type f > /tmp/matrix
+          echo "Configs:"
+          cat /tmp/matrix
+
+          echo "Formatting output..."
+          mv /tmp/matrix /tmp/matrix.tmp
+          touch /tmp/matrix
+          echo -n "[" >> /tmp/matrix
+          cat /tmp/matrix.tmp | awk '{printf "\"%s\",", $0}' - | sed 's/,$//' >> /tmp/matrix
+          echo "]" >> /tmp/matrix
+      - name: Output matrix
+        id: output-matrix
+        run: |
+          echo "Output matrix:"
+          cat /tmp/matrix
+          echo "matrix=$(cat /tmp/matrix)" >> $GITHUB_OUTPUT
+  compile-kernel:
+    runs-on: ubuntu-latest
+    needs: [get-patches, get-configs]
+    strategy:
+      fail-fast: false
+      matrix:
+        commit-ref: ${{ fromJson(needs.get-patches.outputs.matrix) }}
+        config-file: ${{ fromJson(needs.get-configs.outputs.matrix) }}
+    name: Compile Kernel at ${{ matrix.commit-ref }}, config ${{ matrix.config-file }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit-ref }}
+          fetch-depth: 1
+      - name: Checkout config
+        uses: actions/checkout@v4
+        with:
+          ref: github-workflow
+          fetch-depth: 1
+          path: configs-branch
+      - name: Copy config file
+        run: |
+          mv configs-branch/${{ matrix.config-file }} /tmp/.config
+      - name: Setup environment
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+      - name: Configure kernel
+        run: |
+          mkdir /tmp/build
+          make O=/tmp/build defconfig
+          ./scripts/kconfig/merge_config.sh -O /tmp/build -m /tmp/build/.config /tmp/.config
+      - name: Compile Kernel
+        run: |
+          make -C /tmp/build/ -j $(nproc)
