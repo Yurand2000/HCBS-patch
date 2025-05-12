@@ -1016,9 +1016,11 @@ static int balance_rt(struct rq *rq, struct task_struct *p, struct rq_flags *rf)
 		 * not yet started the picking loop.
 		 */
 		rq_unpin_lock(rq, rf);
+#ifdef CONFIG_RT_GROUP_SCHED
 		if (is_dl_group(rt_rq_of_se(&p->rt)))
 			group_pull_rt_task(rt_rq_of_se(&p->rt));
 		else
+#endif
 			pull_rt_task(rq);
 		rq_repin_lock(rq, rf);
 	}
@@ -1104,9 +1106,11 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	if (rq->donor->sched_class != &rt_sched_class)
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq))
 		rt_queue_push_from_group(rq, rt_rq);
 	else
+#endif
 		rt_queue_push_tasks(rq);
 }
 
