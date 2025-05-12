@@ -629,12 +629,15 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 
 	inc_rt_prio(rt_rq, prio);
 
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
 			add_nr_running(rq_of_rt_rq(rt_rq), 1);
-	} else {
+	} else
+#endif
+	{
 		add_nr_running(rq_of_rt_rq(rt_rq), 1);
 	}
 }
@@ -647,12 +650,16 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	rt_rq->rr_nr_running -= rt_se_rr_nr_running(rt_se);
 
 	dec_rt_prio(rt_rq, rt_se_prio(rt_se));
+
+#ifdef CONFIG_RT_GROUP_SCHED
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
 			sub_nr_running(rq_of_rt_rq(rt_rq), 1);
-	} else {
+	} else
+#endif
+	{
 		sub_nr_running(rq_of_rt_rq(rt_rq), 1);
 	}
 }
