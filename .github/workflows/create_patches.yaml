@@ -1,0 +1,27 @@
+name: Create Patches
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  create-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 100
+      - name: Create Patches
+        run: |
+          mkdir -p /tmp/patches
+          git format-patch -o /tmp/patches --rfc --start-number 0 5abc7438f1e9d62e91ad775cc83c9594c48d2282
+          rm -f /tmp/patches/0000*
+        shell: bash
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patches
+          path: /tmp/patches
