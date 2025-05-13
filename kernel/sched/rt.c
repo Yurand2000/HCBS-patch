@@ -87,6 +87,21 @@ void init_rt_rq(struct rt_rq *rt_rq)
 
 void unregister_rt_sched_group(struct task_group *tg)
 {
+	int i;
+
+	if (!tg->dl_se)
+		return;
+
+	for_each_possible_cpu(i) {
+		/*
+		 * Since the dl timer is going to be cancelled,
+		 * we risk to never decrease the running bw...
+		 * Fix this issue by changing the group runtime
+		 * to 0 immediately before freeing it.
+		 */
+		if (tg->dl_se[i]->dl_runtime)
+			BUG_ON(!dl_init_tg(tg, i, 0, tg->dl_se[i]->dl_period));
+	}
 }
 
 void free_rt_sched_group(struct task_group *tg)
@@ -97,14 +112,7 @@ void free_rt_sched_group(struct task_group *tg)
 		if (tg->dl_se) {
 			unsigned long flags;
 
-			/*
-			 * Since the dl timer is going to be cancelled,
-			 * we risk to never decrease the running bw...
-			 * Fix this issue by changing the group runtime
-			 * to 0 immediately before freeing it.
-			 */
-			if (tg->dl_se[i]->dl_runtime)
-				BUG_ON(!dl_init_tg(tg, i, 0, tg->dl_se[i]->dl_period));
+			BUG_ON(tg->dl_se[i]->dl_runtime);
 			raw_spin_rq_lock_irqsave(cpu_rq(i), flags);
 			BUG_ON(tg->rt_rq[i]->rt_nr_running);
 			raw_spin_rq_unlock_irqrestore(cpu_rq(i), flags);
