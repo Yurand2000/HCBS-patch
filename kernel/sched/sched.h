@@ -412,7 +412,8 @@ extern void dl_server_init(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq,
 		    dl_server_pick_f pick_task);
 extern void sched_init_dl_servers(void);
 extern int dl_check_tg(unsigned long total);
-extern void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period);
+extern void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period);
+extern bool is_live_sched_group(struct task_group *tg);
 
 extern void fair_server_init(struct rq *rq);
 extern void __dl_server_attach_root(struct sched_dl_entity *dl_se, struct rq *rq);
