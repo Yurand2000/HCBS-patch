@@ -366,7 +366,7 @@ extern void sched_dl_do_global(void);
 extern int  sched_dl_overflow(struct task_struct *p, int policy, const struct sched_attr *attr);
 extern void __setparam_dl(struct task_struct *p, const struct sched_attr *attr);
 extern void __getparam_dl(struct task_struct *p, struct sched_attr *attr, unsigned int flags);
-extern bool __checkparam_dl(const struct sched_attr *attr);
+extern bool __checkparam_dl(const struct sched_attr *attr, bool allow_zero_runtime);
 extern void dl_wakeup_preempt(struct rq *rq, struct task_struct *p,
 			      struct sched_dl_entity *donor_dl_se);
 extern bool dl_param_changed(struct task_struct *p, const struct sched_attr *attr);
@@ -427,6 +427,7 @@ extern void dl_server_init(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq,
 		    struct rq *served_rq,
 		    dl_server_pick_f pick_task);
 extern void sched_init_dl_servers(void);
+extern int dl_check_tg(unsigned long total);
 extern void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period);
 
 extern void fair_server_init(struct rq *rq);
@@ -601,6 +602,12 @@ extern void start_cfs_bandwidth(struct cfs_bandwidth *cfs_b);
 extern void unthrottle_cfs_rq(struct cfs_rq *cfs_rq);
 extern bool cfs_task_bw_constrained(struct task_struct *p);
 
+extern int tg_rt_bandwidth(struct task_group *tg,
+			   u64 *rt_period_us, u64 *rt_runtime_us);
+extern int tg_rt_internal_bandwidth(struct task_group *tg,
+				    u64 *rt_period_us, u64 *rt_runtime_us);
+extern int tg_set_rt_bandwidth(struct task_group *tg,
+			       u64 rt_period_us, u64 rt_runtime_us);
 extern int sched_rt_can_attach(struct task_group *tg);
 
 extern struct task_group *sched_create_group(struct task_group *parent);
@@ -2124,6 +2131,14 @@ static inline struct rq *_this_rq_lock_irq(struct rq_flags *rf) __acquires_ret
 
 	return rq;
 }
+
+extern struct mutex sched_rt_handler_mutex;
+extern void sched_rt_handler_mutex_lock(void);
+extern void sched_rt_handler_mutex_unlock(void);
+
+DEFINE_LOCK_GUARD_0(sched_rt_handler,
+		    sched_rt_handler_mutex_lock(),
+		    sched_rt_handler_mutex_unlock())
 
 #ifdef CONFIG_NUMA
 
