@@ -343,7 +343,39 @@ void cancel_inactive_timer(struct sched_dl_entity *dl_se)
 	cancel_dl_timer(dl_se, &dl_se->inactive_timer);
 }
 
+/*
+ * Used for dl_bw check and update, used under sched_rt_handler()::mutex and
+ * sched_domains_mutex.
+ */
+u64 dl_cookie;
+
 #ifdef CONFIG_RT_GROUP_SCHED
+int dl_check_tg(unsigned long total)
+{
+	int which_cpu;
+	int cap;
+	struct dl_bw *dl_b;
+	u64 gen = ++dl_cookie;
+
+	for_each_possible_cpu(which_cpu) {
+		guard(rcu_sched)();
+
+		if (!dl_bw_visited(which_cpu, gen)) {
+			cap = dl_bw_capacity(which_cpu);
+			dl_b = dl_bw_of(which_cpu);
+
+			guard(raw_spinlock_irqsave)(&dl_b->lock);
+
+			if (dl_b->bw != -1 &&
+			    cap_scale(dl_b->bw, cap) < dl_b->total_bw + cap_scale(total, cap))
+				return 0;
+		}
+
+	}
+
+	return 1;
+}
+
 void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 {
 	struct rq *rq = container_of_const(dl_se->dl_rq, struct rq, dl);
@@ -3468,12 +3500,6 @@ DEFINE_SCHED_CLASS(dl) = {
 	.task_is_throttled	= task_is_throttled_dl,
 #endif
 };
-
-/*
- * Used for dl_bw check and update, used under sched_rt_handler()::mutex and
- * sched_domains_mutex.
- */
-u64 dl_cookie;
 
 int sched_dl_global_validate(void)
 {
