@@ -1654,13 +1654,15 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 	 * this before getting generic.
 	 */
 	if (!dl_server(dl_se)) {
-		u64 runtime =  50 * NSEC_PER_MSEC;
-		u64 period = 1000 * NSEC_PER_MSEC;
-
 		dl_se->dl_server = 1;
-		dl_server_apply_params(dl_se, runtime, period, 1);
+		if (dl_se == &rq_of_dl_se(dl_se)->fair_server) {
+			u64 runtime =  50 * NSEC_PER_MSEC;
+			u64 period = 1000 * NSEC_PER_MSEC;
 
-		dl_se->dl_defer = 1;
+			BUG_ON(dl_server_apply_params(dl_se, runtime, period, 1));
+
+			dl_se->dl_defer = 1;
+		}
 		setup_new_dl_entity(dl_se);
 	}
 
@@ -1669,13 +1671,14 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 
 	dl_se->dl_server_active = 1;
 	enqueue_dl_entity(dl_se, ENQUEUE_WAKEUP);
-			rq = rq_of_dl_se(dl_se);
+	rq = rq_of_dl_se(dl_se);
 	if (!dl_task(rq->curr) || dl_entity_preempt(dl_se, &rq->curr->dl))
 		resched_curr(rq);
 }
 
 void dl_server_stop(struct sched_dl_entity *dl_se)
 {
+//	if (!dl_server(dl_se)) return;	TODO: Check if the following is equivalent to this!!!
 	if (!dl_se->dl_runtime)
 		return;
 
