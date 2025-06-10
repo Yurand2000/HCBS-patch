@@ -213,8 +213,15 @@ void __dl_add(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
 static inline bool
 __dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
 {
+	u64 dl_groups_root = 0;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+	dl_groups_root = to_ratio(root_task_group.dl_bandwidth.dl_period,
+				  root_task_group.dl_bandwidth.dl_runtime);
+#endif
 	return dl_b->bw != -1 &&
-	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw;
+	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
+					+ cap_scale(dl_groups_root, cap);
 }
 
 static inline
@@ -3113,10 +3120,16 @@ int sched_dl_global_validate(void)
 	u64 period = global_rt_period();
 	u64 new_bw = to_ratio(period, runtime);
 	u64 cookie = ++dl_cookie;
+	u64 dl_groups_root = 0;
 	u64 fair_bw;
 	struct dl_bw *dl_b;
 	int i, cpu, ret = 0;
 	unsigned long cap, flags;
+
+#ifdef CONFIG_RT_GROUP_SCHED
+	dl_groups_root = to_ratio(root_task_group.dl_bandwidth.dl_period,
+				  root_task_group.dl_bandwidth.dl_runtime);
+#endif
 
 	/*
 	 * Here we want to check the bandwidth not being set to some
@@ -3134,7 +3147,8 @@ int sched_dl_global_validate(void)
 
 		raw_spin_lock_irqsave(&dl_b->lock, flags);
 		/* Check if the whole root domain can support the active dl tasks */
-		if (cap_scale(new_bw, cap) < dl_b->total_bw) {
+		if (cap_scale(new_bw, cap) < dl_b->total_bw +
+					     cap_scale(dl_groups_root, cap)) {
 			ret = -EBUSY;
 			goto unlock;
 		}
