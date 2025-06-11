@@ -2621,6 +2621,7 @@ struct rt_schedulable_data {
 	struct task_group *tg;
 	u64 rt_period;
 	u64 rt_runtime;
+	int cid;
 };
 
 static int tg_rt_schedulable(struct task_group *tg, void *data)
@@ -2629,23 +2630,32 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	struct task_group *child;
 	unsigned long total, sum = 0;
 	u64 period, runtime;
-	int n_cpu = num_possible_cpus();
+	int cid;
 
-	period  = tg->dl_bandwidth.dl_period;
-	runtime = tg->dl_bandwidth.dl_runtime;
-	total = to_ratio(period, runtime);
+	cid = d->cid;
+	period = tg->dl_bandwidth.dl_period;
+
+	/*
+     * Root task group runtime has to be applied to every cpu
+	 */
+	if (tg == &root_task_group)
+		runtime = tg->dl_bandwidth.dl_runtime;
+	else
+		runtime = tg->dl_se[cid]->dl_runtime;
 
 	if (tg == d->tg) {
 		period = d->rt_period;
 		runtime = d->rt_runtime;
-		total = to_ratio(period, runtime / n_cpu);
 	}
 
 	/*
 	 * Cannot have more runtime than the period.
 	 */
-	if (runtime > period && runtime != RUNTIME_INF)
+	if (runtime > period && runtime != RUNTIME_INF) {
+		printk("tg_rt_schedulable: runtime greater than zero and different from RUNTIME_INF:\truntime=%lld\tperiod=%lld\n",
+		       runtime, period);
 		return -EINVAL;
+	}
 
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
@@ -2653,19 +2663,23 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	if (dl_bandwidth_enabled() && !runtime && tg_has_rt_tasks(tg))
 		return -EBUSY;
 
-	if (WARN_ON(!rt_group_sched_enabled() && tg != &root_task_group))
-		return -EBUSY;
+	total = to_ratio(period, runtime);
 
 	/*
 	 * Nobody can have more than the global setting allows.
 	 */
-	if (total * ((tg == d->tg) ? n_cpu : 1) >
-	    to_ratio(global_rt_period(), global_rt_runtime()))
+	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
+		printk("tg_rt_schedulable: demanded utilization greater than global available:\ttotal=%ld\tglobal=%ld\n",
+		       total,
+		       to_ratio(global_rt_period(), global_rt_runtime()));
 		return -EINVAL;
+	}
 
 	if (tg == &root_task_group) {
+		rcu_read_lock_sched();
 		if (!dl_check_tg(total))
 			return -EBUSY;
+		rcu_read_unlock_sched();
 	}
 
 	/*
@@ -2673,7 +2687,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	 */
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
 		period  = child->dl_bandwidth.dl_period;
-		runtime = child->dl_bandwidth.dl_runtime;
+		runtime = child->dl_se[cid]->dl_runtime;
 
 		if (child == d->tg) {
 			period = d->rt_period;
@@ -2689,7 +2703,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	return 0;
 }
 
-static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
+static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime, int cid)
 {
 	int ret;
 
@@ -2697,21 +2711,14 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
 		.tg = tg,
 		.rt_period = period,
 		.rt_runtime = runtime,
+		.cid = cid,
 	};
 
-	/*
-	* Since we truncate DL_SCALE bits, make sure we're at least
-	* that big.
-	*/
-	if (runtime != 0 && runtime < (1ULL << DL_SCALE))
+	if (runtime > period || (runtime != 0 && runtime < (2 << (DL_SCALE - 1)))) {
+		printk("__rt_schedulable: runtime greater than period or less than one microsecond:\truntime=%lld\tperiod=%lld\n",
+		       runtime, period);
 		return -EINVAL;
-
-	/*
-	* Since we use the MSB for wrap-around and sign issues, make
-	* sure it's not set (mind that period can be equal to zero).
-	*/
-	if (period & (1ULL << 63))
-		return -EINVAL;
+	}
 
 	rcu_read_lock();
 	ret = walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
@@ -2761,7 +2768,7 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 
 	mutex_lock(&rt_constraints_mutex);
 	read_lock(&tasklist_lock);
-	err = __rt_schedulable(tg, rt_period, runtime);
+	err = __rt_schedulable(tg, rt_period, rt_runtime, cid);
 	if (err)
 		goto unlock;
 
