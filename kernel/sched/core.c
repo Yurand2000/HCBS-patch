@@ -9826,16 +9826,100 @@ static int cpu_burst_write_u64(struct cgroup_subsys_state *css,
 #endif /* CONFIG_GROUP_SCHED_BANDWIDTH */
 
 #ifdef CONFIG_RT_GROUP_SCHED
-static int cpu_rt_runtime_write(struct cgroup_subsys_state *css,
-				struct cftype *cft, s64 val)
+static ssize_t cpu_rt_runtime_write(struct kernfs_open_file *of, char *buf,
+				    size_t nbytes, loff_t off)
 {
-	return sched_group_set_rt_runtime(css_tg(css), val);
+	struct cgroup_subsys_state *css = of_css(of);
+	long *rt_runtimes __free(kfree) = NULL;
+	cpumask_t updated_cpus_mask;
+	char *val_s, *cpu_s;
+	int i, err;
+	long rt_runtime;
+
+	rt_runtimes = kcalloc(num_possible_cpus(), sizeof(long), GFP_KERNEL);
+	if (!rt_runtimes)
+		return -ENOMEM;
+
+	/* Read and parse the runtime to assign to the CPUs */
+	val_s = strsep(&buf, " ");
+	if (!val_s)
+		return -EINVAL;
+
+	err = kstrtol(val_s, 0, &rt_runtime);
+	if (err)
+		return err;
+
+	/*
+	 * Read the optional list of CPUs to apply the runtime to. The list is
+	 * optional to follow the original RT_GROUP_SCHED interface, as it will
+	 * apply the runtime to all CPUs if not list is given.
+	 */
+	cpu_s = strsep(&buf, " ");
+	if (cpu_s) {
+		err = cpulist_parse(cpu_s, &updated_cpus_mask);
+		if (err)
+			return err;
+
+		err = sched_group_rt_runtime(css_tg(css), rt_runtimes,
+					     num_possible_cpus());
+		if (err)
+			return err;
+	} else {
+		cpumask_copy(&updated_cpus_mask, cpu_possible_mask);
+	}
+
+	for_each_cpu(i, &updated_cpus_mask) {
+		rt_runtimes[i] = rt_runtime;
+	}
+
+	err = sched_group_set_rt_runtime(css_tg(css), rt_runtimes,
+					 num_possible_cpus());
+	if (err)
+		return err;
+
+	return nbytes;
 }
 
-static s64 cpu_rt_runtime_read(struct cgroup_subsys_state *css,
-			       struct cftype *cft)
+static int cpu_rt_runtime_read(struct seq_file *sf, void *v)
 {
-	return sched_group_rt_runtime(css_tg(css));
+	struct cgroup_subsys_state *css = seq_css(sf);
+	long *rt_runtimes __free(kfree) = NULL;
+	bool runtimes_equal;
+	int i, ret;
+
+	rt_runtimes = kcalloc(num_possible_cpus(), sizeof(long), GFP_KERNEL);
+	if (!rt_runtimes)
+		return -ENOMEM;
+
+	ret = sched_group_rt_runtime(css_tg(css), rt_runtimes,
+				     num_possible_cpus());
+	if (ret)
+		return ret;
+
+	runtimes_equal = true;
+	for_each_possible_cpu(i) {
+		if (rt_runtimes[0] != rt_runtimes[i]) {
+			runtimes_equal = false;
+			break;
+		}
+	}
+
+	/*
+	 * If all the runtimes are equal, follow the original interface of
+	 * RT_GROUP_SCHED, i.e. just print a single value for all the CPUs.
+	 * Otherwise, print a list of values.
+	 */
+	if (runtimes_equal) {
+		seq_printf(sf, "%ld\n", rt_runtimes[0]);
+	} else {
+		for_each_possible_cpu(i) {
+			seq_printf(sf, "%ld ", rt_runtimes[i]);
+		}
+
+		seq_puts(sf, "\n");
+	}
+
+	return 0;
 }
 
 static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
@@ -10174,8 +10258,8 @@ static struct cftype cpu_files[] = {
 #ifdef CONFIG_RT_GROUP_SCHED
 	{
 		.name = "rt_runtime_us",
-		.read_s64 = cpu_rt_runtime_read,
-		.write_s64 = cpu_rt_runtime_write,
+		.seq_show = cpu_rt_runtime_read,
+		.write = cpu_rt_runtime_write,
 	},
 	{
 		.name = "rt_period_us",
