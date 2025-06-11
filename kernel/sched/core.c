@@ -9956,6 +9956,92 @@ static s64 cpu_rt_runtime_read(struct cgroup_subsys_state *css,
 	return sched_group_rt_runtime(css_tg(css));
 }
 
+static int cpu_rt_multi_runtime_read(struct seq_file *sf, void *v)
+{
+	struct cgroup_subsys_state *css = seq_css(sf);
+	int n_cpu = num_possible_cpus();
+	long *rt_runtimes;
+	int ret, i;
+
+	rt_runtimes = kzalloc(n_cpu * sizeof(*rt_runtimes), GFP_KERNEL);
+	if (!rt_runtimes)
+		return -ENOMEM;
+
+	ret = sched_group_rt_multi_runtime(css_tg(css), rt_runtimes, n_cpu);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < n_cpu; i++)
+		seq_printf(sf, "%ld ", rt_runtimes[i]);
+
+	seq_printf(sf, "\n");
+
+	return 0;
+}
+
+static ssize_t cpu_rt_multi_runtime_write(struct kernfs_open_file *of,
+				char *buf, size_t nbytes, loff_t off)
+{
+	struct cgroup_subsys_state *css = of_css(of);
+	long *old_rt_runtimes;
+	cpumask_t mask;
+	char *cpu_s, *val_s;
+	int ret, cid, n_cpu = num_possible_cpus();
+	long val;
+
+	old_rt_runtimes = kzalloc(n_cpu * sizeof(*old_rt_runtimes), GFP_KERNEL);
+	if (!old_rt_runtimes)
+		return -ENOMEM;
+
+	cpu_s = strsep(&buf, " ");
+	val_s = strsep(&buf, " ");
+
+	if (!cpu_s || !val_s)
+		return -EINVAL;
+
+	ret = cpulist_parse(cpu_s, &mask);
+	if (ret)
+		return ret;
+
+	ret = kstrtol(val_s, 0, &val);
+	if (ret)
+		return ret;
+
+	ret = sched_group_rt_multi_runtime(css_tg(css), old_rt_runtimes, n_cpu);
+	if(ret)
+		return ret;
+
+// TODO: cycle on cpu, and if total runtime == 0 and tg.hasRT == true => then error
+// IMPLEMENT ME
+	/*
+	 * Ensure we don't starve existing RT tasks.
+	 */
+	// if (dl_bandwidth_enabled() && runtime == 0 && tg_has_rt_tasks(tg)) {
+	// 	return -EBUSY;
+	// }
+	// ==========================================
+
+	for_each_cpu(cid, &mask) {
+		if (cid >= n_cpu)
+			break;
+		ret = sched_group_set_rt_multi_runtime(css_tg(css), val, cid);
+		if (ret)
+			goto exit;
+	}
+
+	return nbytes;
+
+exit:
+	while(--cid >= 0) {
+		if (cpumask_test_cpu(cid, &mask)) {
+			sched_group_set_rt_multi_runtime(css_tg(css),
+				old_rt_runtimes[cid], cid);
+		}
+	}
+
+	return ret;
+}
+
 static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
 				    struct cftype *cftype, u64 rt_period_us)
 {
@@ -10294,6 +10380,12 @@ static struct cftype cpu_files[] = {
 		.name = "rt_runtime_us",
 		.read_s64 = cpu_rt_runtime_read,
 		.write_s64 = cpu_rt_runtime_write,
+	},
+	{
+		.name = "rt_multi_runtime_us",
+		.seq_show = cpu_rt_multi_runtime_read,
+		.write = cpu_rt_multi_runtime_write,
+		.flags = CFTYPE_NOT_ON_ROOT,
 	},
 	{
 		.name = "rt_period_us",
