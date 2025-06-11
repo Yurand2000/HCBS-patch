@@ -4257,6 +4257,7 @@ int try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		 */
 		WRITE_ONCE(p->__state, TASK_WAKING);
 
+#if 0
 		/*
 		 * If the owning (remote) CPU is still in the middle of schedule() with
 		 * this task as prev, considering queueing p on the remote CPUs wake_list
@@ -4279,6 +4280,7 @@ int try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		if (smp_load_acquire(&p->on_cpu) &&
 		    ttwu_queue_wakelist(p, task_cpu(p), wake_flags))
 			break;
+#endif
 
 		/*
 		 * If the owning (remote) CPU is still in the middle of schedule() with
