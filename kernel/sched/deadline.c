@@ -1496,6 +1496,9 @@ static void update_curr_dl_se(struct rq *rq, struct sched_dl_entity *dl_se, s64 
 {
 	s64 scaled_delta_exec;
 
+	if (dl_server(dl_se) && !on_dl_rq(dl_se))
+		return;
+
 	if (unlikely(delta_exec <= 0)) {
 		if (unlikely(dl_se->dl_yielded))
 			goto throttle;
@@ -1865,7 +1868,13 @@ void inc_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	u64 deadline = dl_se->deadline;
 
 	dl_rq->dl_nr_running++;
-	add_nr_running(rq_of_dl_rq(dl_rq), 1);
+	if (!dl_server(dl_se) || dl_se == &rq_of_dl_rq(dl_rq)->fair_server) {
+		add_nr_running(rq_of_dl_rq(dl_rq), 1);
+	} else {
+		struct rt_rq *rt_rq = &dl_se->my_q->rt;
+
+		add_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	}
 
 	inc_dl_deadline(dl_rq, deadline);
 }
@@ -1875,7 +1884,13 @@ void dec_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 {
 	WARN_ON(!dl_rq->dl_nr_running);
 	dl_rq->dl_nr_running--;
-	sub_nr_running(rq_of_dl_rq(dl_rq), 1);
+	if ((!dl_server(dl_se)) || dl_se == &rq_of_dl_rq(dl_rq)->fair_server) {
+		sub_nr_running(rq_of_dl_rq(dl_rq), 1);
+	} else {
+		struct rt_rq *rt_rq = &dl_se->my_q->rt;
+
+		sub_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	}
 
 	dec_dl_deadline(dl_rq, dl_se->deadline);
 }
