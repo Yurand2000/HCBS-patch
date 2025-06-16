@@ -564,8 +564,8 @@ extern void init_tg_rt_entry(struct task_group *tg, struct rq *s_rq,
 extern int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us);
 extern int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us);
 extern int sched_group_set_rt_multi_runtime(struct task_group *tg,
-					    unsigned long rt_runtime_us,
-					    int cpu_id);
+					    long *rt_runtimes,
+					    size_t size);
 extern int sched_group_rt_multi_runtime(struct task_group *tg, long *rt_runtimes,
 				 size_t size);
 extern long sched_group_rt_runtime(struct task_group *tg);

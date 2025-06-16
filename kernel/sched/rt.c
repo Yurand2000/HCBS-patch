@@ -2800,20 +2800,51 @@ int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us)
 	return 0;
 }
 
-int sched_group_set_rt_multi_runtime(struct task_group *tg,
-				unsigned long rt_runtime_us, int cid)
+int sched_group_set_rt_multi_runtime(struct task_group *tg, long rt_runtime_us, cpumask_t mask)
 {
+	long *old_rt_runtimes;
 	u64 rt_runtime, rt_period;
+	int cid, err;
+	
+	if (tg_has_rt_tasks(tg) && rt_runtime_us == 0) {
+		err = -EINVAL;
+		for_each_present_cpu(cid) {
+			if (!cpumask_test_cpu(cid, &mask) && tg->dl_se[i]->dl_runtime != 0) {
+				err = 0;
+				break;
+			}
+		}
+	}
 
-	rt_period = tg->dl_bandwidth.dl_period;
-	rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
-	if (rt_runtime_us < 0)
-		rt_runtime = RUNTIME_INF;
+	if(err)
+		return err;
 
-	if (tg_has_rt_tasks(tg) && rt_runtime_us == 0)
-		return -EINVAL;
+	old_rt_runtimes = kzalloc(n_cpu * sizeof(*old_rt_runtimes), GFP_KERNEL);
+	if (!old_rt_runtimes)
+		return -ENOMEM;
 
-	return tg_set_rt_bandwidth(tg, rt_period, rt_runtime, cid);
+	err = sched_group_rt_multi_runtime(css_tg(css), old_rt_runtimes, n_cpu);
+	if(err)
+		return err;
+
+	rt_period  = tg->dl_bandwidth.dl_period;
+	for_each_present_cpu(i) {
+		rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
+		if (rt_runtime_us < 0)
+			rt_runtime = RUNTIME_INF;
+		else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
+			return -EINVAL;
+
+		err = tg_set_rt_bandwidth(tg, rt_period, rt_runtime, cid);
+		if (err)
+			goto restore;
+	}
+
+	return 0;
+
+restore:
+
+	return err;
 }
 
 long sched_group_rt_runtime(struct task_group *tg)
