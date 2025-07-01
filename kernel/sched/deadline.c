@@ -1657,8 +1657,12 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 		u64 runtime =  50 * NSEC_PER_MSEC;
 		u64 period = 1000 * NSEC_PER_MSEC;
 
+		// only fair-servers are initialized in this way. To ensure that we are
+		// working with a fair server, we first need to set the dl_server flag
+		// as they are uninitialized.
 		dl_se->dl_server = 1;
-		dl_server_apply_params(dl_se, runtime, period, 1);
+		BUG_ON(dl_se != &rq_of_dl_se(dl_se)->fair_server);
+		BUG_ON(dl_server_apply_params(dl_se, runtime, period, 1));
 
 		dl_se->dl_defer = 1;
 		setup_new_dl_entity(dl_se);
@@ -1676,7 +1680,7 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 
 void dl_server_stop(struct sched_dl_entity *dl_se)
 {
-	if (!dl_se->dl_runtime)
+	if (!dl_server(dl_se))
 		return;
 
 	dequeue_dl_entity(dl_se, DEQUEUE_SLEEP);
