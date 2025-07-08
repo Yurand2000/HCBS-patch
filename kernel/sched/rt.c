@@ -2057,11 +2057,6 @@ DEFINE_SCHED_CLASS(rt) = {
 };
 
 #ifdef CONFIG_RT_GROUP_SCHED
-/*
- * Ensure that the real time constraints are schedulable.
- */
-static DEFINE_MUTEX(rt_constraints_mutex);
-
 static inline int tg_has_rt_tasks(struct task_group *tg)
 {
 	struct task_struct *task;
@@ -2186,6 +2181,7 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
 static int tg_set_rt_bandwidth(struct task_group *tg,
 		u64 rt_period, u64 rt_runtime)
 {
+	static DEFINE_MUTEX(rt_constraints_mutex);
 	int i, err = 0;
 
 	/*
@@ -2205,27 +2201,23 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime)
 		return -EINVAL;
 
-	mutex_lock(&rt_constraints_mutex);
+	guard(mutex)(&rt_constraints_mutex);
 	err = __rt_schedulable(tg, rt_period, rt_runtime);
 	if (err)
-		goto unlock;
+		return err;
 
-	raw_spin_lock_irq(&tg->dl_bandwidth.dl_runtime_lock);
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
 	tg->dl_bandwidth.dl_period  = rt_period;
 	tg->dl_bandwidth.dl_runtime = rt_runtime;
 
 	if (tg == &root_task_group)
-		goto unlock_bandwidth;
+		return 0;
 
 	for_each_possible_cpu(i) {
 		dl_init_tg(tg->dl_se[i], rt_runtime, rt_period);
 	}
-unlock_bandwidth:
-	raw_spin_unlock_irq(&tg->dl_bandwidth.dl_runtime_lock);
-unlock:
-	mutex_unlock(&rt_constraints_mutex);
 
-	return err;
+	return 0;
 }
 
 int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us)
