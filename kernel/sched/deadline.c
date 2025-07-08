@@ -366,25 +366,11 @@ void cancel_inactive_timer(struct sched_dl_entity *dl_se)
 }
 
 #ifdef CONFIG_RT_GROUP_SCHED
-int dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
+void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 {
 	struct rq *rq = container_of(dl_se->dl_rq, struct rq, dl);
 	int is_active;
 	u64 old_runtime;
-
-	/*
-	 * Since we truncate DL_SCALE bits, make sure we're at least
-	 * that big.
-	 */
-	if (rt_runtime != 0 && rt_runtime < (1ULL << DL_SCALE))
-		return 0;
-
-	/*
-	 * Since we use the MSB for wrap-around and sign issues, make
-	 * sure it's not set (mind that period can be equal to zero).
-	 */
-	if (rt_period & (1ULL << 63))
-		return 0;
 
 	raw_spin_rq_lock_irq(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
@@ -407,8 +393,6 @@ int dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 		add_running_bw(dl_se, dl_se->dl_rq);
 
 	raw_spin_rq_unlock_irq(rq);
-
-	return 1;
 }
 #endif
 
