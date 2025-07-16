@@ -101,20 +101,12 @@ void init_tg_rt_entry(struct task_group *tg, struct rq *served_rq,
 		struct sched_dl_entity *dl_se, int cpu,
 		struct sched_dl_entity *parent)
 {
-	struct rq *rq = cpu_rq(cpu);
-
 	served_rq->rt.highest_prio.curr = MAX_RT_PRIO-1;
-	served_rq->rt.rq = rq;
+	served_rq->rt.rq = cpu_rq(cpu);
 	served_rq->rt.tg = tg;
 
 	tg->rt_rq[cpu] = &served_rq->rt;
 	tg->dl_se[cpu] = dl_se;
-
-	if (!dl_se)
-		return;
-
-	dl_se->dl_rq = &rq->dl;
-	dl_se->my_q = served_rq;
 }
 
 int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
