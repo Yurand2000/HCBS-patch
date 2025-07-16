@@ -749,6 +749,8 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	    is_dl_group(rt_rq) && (rt_rq->rt_nr_running == 0)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
+		if(dl_se->dl_server_idle)
+			dl_se->dl_server_idle = 0;
 		dl_server_start(dl_se);
 	}
 
@@ -773,7 +775,7 @@ static bool dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	    is_dl_group(rt_rq) && !rt_rq->rt_nr_running) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
-		dl_server_stop(dl_se);
+		dl_se->dl_server_idle = 1;
 	}
 
 	return true;
