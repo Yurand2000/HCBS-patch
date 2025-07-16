@@ -1496,9 +1496,6 @@ static void update_curr_dl_se(struct rq *rq, struct sched_dl_entity *dl_se, s64 
 {
 	s64 scaled_delta_exec;
 
-	if (dl_server(dl_se) && !on_dl_rq(dl_se))
-		return;
-
 	if (unlikely(delta_exec <= 0)) {
 		if (unlikely(dl_se->dl_yielded))
 			goto throttle;
