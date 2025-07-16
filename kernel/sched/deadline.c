@@ -374,16 +374,11 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 
 	raw_spin_rq_lock_irq(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
+	if (is_active || dl_se->dl_server_idle)
+		dl_server_stop(dl_se);
+
 	new_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
-	if (is_active) {
-		sub_running_bw(dl_se, dl_se->dl_rq);
-	} else if (dl_se->dl_non_contending) {
-		sub_running_bw(dl_se, dl_se->dl_rq);
-		dl_se->dl_non_contending = 0;
-		hrtimer_try_to_cancel(&dl_se->inactive_timer);
-	}
-	__sub_rq_bw(dl_se->dl_bw, dl_se->dl_rq);
-	__add_rq_bw(new_bw, dl_se->dl_rq);
+	dl_rq_change_utilization(rq, dl_se, new_bw);
 
 	dl_se->dl_runtime  = rt_runtime;
 	dl_se->dl_deadline = rt_period;
@@ -396,7 +391,7 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 	dl_se->dl_density = new_bw;
 
 	if (is_active)
-		add_running_bw(dl_se, dl_se->dl_rq);
+		dl_server_start(dl_se);
 
 	raw_spin_rq_unlock_irq(rq);
 }
