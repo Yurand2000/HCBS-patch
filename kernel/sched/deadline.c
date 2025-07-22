@@ -1605,10 +1605,11 @@ void dl_server_start(struct sched_dl_entity *dl_se)
 {
 	struct rq *rq = dl_se->rq;
 
-	if (!dl_server(dl_se) || dl_se->dl_server_active)
+	if (!dl_server(dl_se) || dl_server_active(dl_se))
 		return;
 
 	dl_se->dl_server_active = 1;
+	dl_se->dl_server_idle = 0;
 	enqueue_dl_entity(dl_se, ENQUEUE_WAKEUP);
 	if (!dl_task(dl_se->rq->curr) || dl_entity_preempt(dl_se, &rq->curr->dl))
 		resched_curr(dl_se->rq);
@@ -1624,6 +1625,7 @@ void dl_server_stop(struct sched_dl_entity *dl_se)
 	dl_se->dl_defer_armed = 0;
 	dl_se->dl_throttled = 0;
 	dl_se->dl_server_active = 0;
+	dl_se->dl_server_idle = 0;
 }
 
 static bool dl_server_stopped(struct sched_dl_entity *dl_se)
