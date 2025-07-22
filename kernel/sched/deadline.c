@@ -374,8 +374,9 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 
 	raw_spin_rq_lock_irq(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
-	if (is_active || dl_se->dl_server_idle)
-		dl_server_stop(dl_se);
+
+	update_rq_clock(rq);
+	dl_server_stop(dl_se);
 
 	new_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
 	dl_rq_change_utilization(rq, dl_se, new_bw);
