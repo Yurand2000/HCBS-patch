@@ -82,8 +82,13 @@ jobs:
       matrix:
         commit-ref: ${{ fromJson(needs.get-patches.outputs.matrix) }}
         config-file: ${{ fromJson(needs.get-configs.outputs.matrix) }}
-    name: Compile Kernel at ${{ matrix.commit-ref }}, config ${{ matrix.config-file }}
+        arch: [x86_64, armv7]
+    name: Compile Kernel at ${{ matrix.commit-ref }}, config ${{ matrix.config-file }}, arch ${{ matrix.arch }}
     steps:
+      - name: Configure Architecture
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: ${{ matrix.arch }}
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -97,16 +102,20 @@ jobs:
           path: configs-branch
       - name: Copy config file
         run: |
-          mv configs-branch/${{ matrix.config-file }} /tmp/.config
+          cp configs-branch/${{ matrix.config-file }} /tmp/.config
+        shell: alpine.sh {0}
       - name: Setup environment
         run: |
-          sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+          apk update
+          apk add coreutils util-linux findutils diffutils gawk build-base alpine-sdk flex bison linux-headers elfutils-dev openssl-dev ncurses-dev perl
+        shell: alpine.sh --root {0}
       - name: Configure kernel
         run: |
           mkdir /tmp/build
-          make O=/tmp/build defconfig
+          make ARCH=${{ matrix.arch }} O=/tmp/build defconfig
           ./scripts/kconfig/merge_config.sh -O /tmp/build -m /tmp/build/.config /tmp/.config
+        shell: alpine.sh {0}
       - name: Compile Kernel
         run: |
-          make -C /tmp/build/ -j $(nproc)
+          make ARCH=${{ matrix.arch }} -C /tmp/build/ -j $(nproc)
+        shell: alpine.sh {0}
