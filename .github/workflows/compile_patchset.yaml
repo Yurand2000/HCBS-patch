@@ -82,7 +82,8 @@ jobs:
       matrix:
         commit-ref: ${{ fromJson(needs.get-patches.outputs.matrix) }}
         config-file: ${{ fromJson(needs.get-configs.outputs.matrix) }}
-    name: Compile Kernel at ${{ matrix.commit-ref }}, config ${{ matrix.config-file }}
+        arch: [amd64, i386]
+    name: Compile Kernel at ${{ matrix.commit-ref }}, config ${{ matrix.config-file }}, arch ${{ matrix.arch }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,16 +98,24 @@ jobs:
           path: configs-branch
       - name: Copy config file
         run: |
-          mv configs-branch/${{ matrix.config-file }} /tmp/.config
+          cp configs-branch/${{ matrix.config-file }} /tmp/.config
       - name: Setup environment
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+          sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev ubuntu-dev-tools
       - name: Configure kernel
         run: |
           mkdir /tmp/build
-          make O=/tmp/build defconfig
+          if [ "${{ matrix.arch }}" = "i386" ]; then
+            make ARCH=i386 O=/tmp/build defconfig
+          else
+            make O=/tmp/build defconfig
+          fi
           ./scripts/kconfig/merge_config.sh -O /tmp/build -m /tmp/build/.config /tmp/.config
       - name: Compile Kernel
         run: |
-          make -C /tmp/build/ -j $(nproc)
+          if [ "${{ matrix.arch }}" = "i386" ]; then
+            make ARCH=i386 CC="gcc -m32" -C /tmp/build/ -j $(nproc)
+          else
+            make -C /tmp/build/ -j $(nproc)
+          fi
