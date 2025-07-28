@@ -25,8 +25,12 @@ jobs:
           touch /tmp/matrix
           HEAD_SHA=$(git rev-parse HEAD)
           while ! git show $HEAD_SHA | grep -q "Author: Linus"; do
-            echo "Found commit: $HEAD_SHA"
-            echo "$HEAD_SHA" >> /tmp/matrix
+            if ! git show -s --format='%s' $HEAD_SHA | grep -q "[FIXUP]"; then
+              echo "Found commit: $HEAD_SHA"
+              echo "$HEAD_SHA" >> /tmp/matrix
+            else
+              echo "Skipping fixup commit: $HEAD_SHA"
+            fi
 
             git checkout HEAD~1 > /dev/null 2> /dev/null
             HEAD_SHA=$(git rev-parse HEAD)
