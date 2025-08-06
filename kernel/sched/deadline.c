@@ -1677,22 +1677,15 @@ void sched_init_dl_servers(void)
 
 int dl_server_apply_params(struct sched_dl_entity *dl_se, u64 runtime, u64 period, bool init)
 {
-	u64 max_bw, new_bw = to_ratio(period, runtime);
+	u64 new_bw = to_ratio(period, runtime);
 	struct rq *rq = dl_se->rq;
 	int cpu = cpu_of(rq);
 	struct dl_bw *dl_b;
-	unsigned long cap;
-	int retval = 0;
-	int cpus;
 
 	dl_b = dl_bw_of(cpu);
 	guard(raw_spinlock)(&dl_b->lock);
 
-	cpus = dl_bw_cpus(cpu);
-	cap = dl_bw_capacity(cpu);
-	max_bw = div64_ul(cap_scale(BW_UNIT - dl_b->bw, cap), (unsigned long)cpus);
-
-	if (new_bw > max_bw)
+	if (new_bw > BW_UNIT - dl_b->bw)
 		return -EBUSY;
 
 	if (init) {
@@ -1711,7 +1704,7 @@ int dl_server_apply_params(struct sched_dl_entity *dl_se, u64 runtime, u64 perio
 	dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
 	dl_se->dl_density = to_ratio(dl_se->dl_deadline, dl_se->dl_runtime);
 
-	return retval;
+	return 0;
 }
 
 /*
@@ -3142,9 +3135,8 @@ int sched_dl_global_validate(void)
 		fair_bw = dl_bw_fair(cpu);
 
 		raw_spin_lock_irqsave(&dl_b->lock, flags);
-		if (cap_scale(new_bw, cap) < dl_b->total_bw)
-			ret = -EBUSY;
-		if (cap_scale(new_bw, cap) + fair_bw > cap_scale(BW_UNIT, cap))
+		if (cap_scale(new_bw, cap) < dl_b->total_bw ||
+		    new_bw + fair_bw > BW_UNIT)
 			ret = -EBUSY;
 		raw_spin_unlock_irqrestore(&dl_b->lock, flags);
 
