@@ -473,11 +473,12 @@ struct task_group {
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	struct sched_rt_entity	**rt_se;
 	/*
-	 * The scheduling entities for the task group are managed as a single
-	 * sched_dl_entity, each of them sharing the same dl_bandwidth.
+	 * Each task group manages a different scheduling entity per CPU, i.e. a
+	 * different deadline server, and a runqueue per CPU. All the dl-servers
+	 * share the same dl_bandwidth object.
 	 */
+	struct sched_rt_entity	**rt_se;
 	struct sched_dl_entity	**dl_se;
 	struct rt_rq		**rt_rq;
 
