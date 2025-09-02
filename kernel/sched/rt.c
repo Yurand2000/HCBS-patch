@@ -2088,7 +2088,8 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
-	if (dl_bandwidth_enabled() && !runtime && tg_has_rt_tasks(tg))
+	if (dl_bandwidth_enabled() && tg != &root_task_group &&
+	    !runtime && tg_has_rt_tasks(tg))
 		return -EBUSY;
 
 	if (WARN_ON(!rt_group_sched_enabled() && tg != &root_task_group))
@@ -2159,13 +2160,6 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	int i, err = 0;
 
 	/*
-	 * Disallowing the root group RT runtime is BAD, it would disallow the
-	 * kernel creating (and or operating) RT threads.
-	 */
-	if (tg == &root_task_group && rt_runtime == 0)
-		return -EINVAL;
-
-	/*
 	 * Bound quota to defend quota against overflow during bandwidth shift.
 	 */
 	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime)
@@ -2199,6 +2193,10 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg)
 {
+	/* Allow executing in the root cgroup regardless of allowed bandwidth */
+	if (tg == &root_task_group)
+		return 1;
+
 	/* Don't accept real-time tasks when there is no way for them to run */
 	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
 		return 0;
