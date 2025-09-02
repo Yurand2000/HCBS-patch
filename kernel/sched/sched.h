@@ -1283,6 +1283,11 @@ struct rq {
 #endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
+	/*
+	 * Balance callbacks operate only on global runqueues.
+	 * These pointers allow referencing cgroup specific runqueues
+	 * for balancing operations.
+	 */
 	struct rq		*rq_to_push_from;
 	struct rq		*rq_to_pull_to;
 #endif
