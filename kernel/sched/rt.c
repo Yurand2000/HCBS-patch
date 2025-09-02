@@ -1093,7 +1093,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
 	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
-		rt_queue_push_from_group(rq, rt_rq);
+		rt_queue_push_from_group(rt_rq);
 	else
 		rt_queue_push_tasks(rt_rq);
 }
@@ -1163,7 +1163,7 @@ static void put_prev_task_rt(struct rq *rq, struct task_struct *p, struct task_s
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (dl_se->dl_throttled)
-			rt_queue_push_from_group(rq, rt_rq);
+			rt_queue_push_from_group(rt_rq);
 	}
 }
 
@@ -2281,7 +2281,7 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 		return;
 
 	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
-		rt_queue_pull_to_group(rq, rt_rq);
+		rt_queue_pull_to_group(rt_rq);
 	else
 		rt_queue_pull_task(rt_rq);
 }
@@ -2303,6 +2303,8 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
+	struct rt_rq *rt_rq;
+
 	/*
 	 * If we are running, update the avg_rt tracking, as the running time
 	 * will now on be accounted into the latter.
@@ -2325,12 +2327,12 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	 * then see if we can move to another run queue.
 	 */
 	if (task_on_rq_queued(p)) {
-		
-		if (!is_dl_group(rt_rq_of_se(&p->rt)) && p->nr_cpus_allowed > 1 && rq->rt.overloaded) {
-			rt_queue_push_tasks(rt_rq_of_se(&p->rt));
+		rt_rq = rt_rq_of_se(&p->rt);
+		if (!is_dl_group(rt_rq) && p->nr_cpus_allowed > 1 && rq->rt.overloaded) {
+			rt_queue_push_tasks(rt_rq);
 			return;
-		} else if (is_dl_group(rt_rq_of_se(&p->rt)) && rt_rq_of_se(&p->rt)->overloaded) {
-			rt_queue_push_from_group(rq, rt_rq_of_se(&p->rt));
+		} else if (is_dl_group(rt_rq) && rt_rq->overloaded) {
+			rt_queue_push_from_group(rt_rq);
 			return;
 		}
 
@@ -2358,7 +2360,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, int oldprio)
 		 */
 		if (oldprio < p->prio) {
 			if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
-				rt_queue_pull_to_group(rq, rt_rq);
+				rt_queue_pull_to_group(rt_rq);
 			else
 				rt_queue_pull_task(rt_rq);
 		}
