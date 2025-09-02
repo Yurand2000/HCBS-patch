@@ -388,7 +388,7 @@ int dl_check_tg(unsigned long total)
 	return 1;
 }
 
-static inline bool is_active_sched_group(struct task_group *tg)
+bool is_active_sched_group(struct task_group *tg)
 {
 	struct task_group *child;
 	bool is_active = 1;

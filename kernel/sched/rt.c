@@ -2242,9 +2242,6 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg, struct task_struct *tsk)
 {
-	struct task_group *child;
-	int can_attach = 1;
-
 	/* Allow executing in the root cgroup regardless of allowed bandwidth */
 	if (tg == &root_task_group)
 		return 1;
@@ -2253,14 +2250,8 @@ int sched_rt_can_attach(struct task_group *tg, struct task_struct *tsk)
 	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
 		return 0;
 
-	/* If one of the children has runtime > 0, cannot attach RT tasks! */
-	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		if (child->dl_bandwidth.dl_runtime) {
-			can_attach = 0;
-		}
-	}
-
-	return can_attach;
+	/* tasks can be attached only if the taskgroup has no active children. */
+	return (int)is_active_sched_group(tg);
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED: */
