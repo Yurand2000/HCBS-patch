@@ -948,26 +948,42 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 	if (!rt_group_sched_enabled())
 		goto no_group_sched;
 
+	/*
+	 * Preemption checks are different if the waking task and the current
+	 * task are running on the global runqueue or in a cgroup.
+	 * The following rules apply:
+	 *   - dl-tasks (and equally dl_servers) always preempt FIFO/RR tasks.
+	 *     - if curr is inside a cgroup (i.e. run by a dl_server) and
+	 *       waking is not, do nothing.
+	 *     - if waking is inside a cgroup but not curr, always reschedule.
+	 *   - if they are both on the global runqueue, run the standard code.
+	 *   - if they are both in the same cgroup, check for tasks priorities.
+	 *   - if they are both in a cgroup, but not the same one, check whether
+	 *     the woken task's dl_server preempts the current's dl_server.
+	 */
 	if (is_dl_group(rt_rq_of_se(&p->rt)) &&
 	    is_dl_group(rt_rq_of_se(&rq->curr->rt))) {
-		struct sched_dl_entity *dl_se, *curr_dl_se;
+		struct sched_dl_entity *woken_dl_se, *curr_dl_se;
 
-		dl_se = dl_group_of(rt_rq_of_se(&p->rt));
+		woken_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
 		curr_dl_se = dl_group_of(rt_rq_of_se(&rq->curr->rt));
 
-		if (dl_entity_preempt(dl_se, curr_dl_se)) {
-			resched_curr(rq);
-			return;
-		} else if (!dl_entity_preempt(curr_dl_se, dl_se)) {
-			if (p->prio < rq->curr->prio) {
+		if (rt_rq_of_se(&p->rt)->tg == rt_rq_of_se(&rq->curr->rt)->tg) {
+			if (p->prio < rq->curr->prio)
 				resched_curr(rq);
-				return;
-			}
+
+			return;
 		}
+
+		if (dl_entity_preempt(woken_dl_se, curr_dl_se))
+			resched_curr(rq);
+
 		return;
+
 	} else if (is_dl_group(rt_rq_of_se(&p->rt))) {
 		resched_curr(rq);
 		return;
+
 	} else if (is_dl_group(rt_rq_of_se(&rq->curr->rt))) {
 		return;
 	}
