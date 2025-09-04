@@ -206,7 +206,7 @@ static inline u64 get_dl_groups_bw(void)
 {
 #ifdef CONFIG_RT_GROUP_SCHED
 	return to_ratio(root_task_group.dl_bandwidth.dl_period,
-			root_task_group.dl_bandwidth.dl_runtime);
+			root_task_group.dl_bandwidth.dl_runtime) / num_online_cpus();
 #else
 	return 0;
 #endif
