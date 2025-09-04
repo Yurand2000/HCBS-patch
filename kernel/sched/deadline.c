@@ -1653,7 +1653,7 @@ void sched_init_dl_servers(void)
 		WARN_ON(dl_server(dl_se));
 
 		dl_se->dl_server = 1;
-		BUG_ON(dl_server_apply_params(dl_se, runtime, period, 1));
+		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 1));
 
 		dl_se->dl_defer = 1;
 		setup_new_dl_entity(dl_se);
