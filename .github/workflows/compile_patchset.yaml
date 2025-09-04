@@ -24,12 +24,21 @@ jobs:
           echo "Getting commits..."
           touch /tmp/matrix
           HEAD_SHA=$(git rev-parse HEAD)
+          FIXUP=0
           while ! git show $HEAD_SHA | grep -q "Author: Linus"; do
-            if ! git show -s --format='%s' $HEAD_SHA | grep -q "[FIXUP]"; then
+            if [ $FIXUP -eq 0 ]; then
               echo "Found commit: $HEAD_SHA"
               echo "$HEAD_SHA" >> /tmp/matrix
+
+              if git show -s --format='%s' $HEAD_SHA | grep -qF "[FIXUP]"; then
+                FIXUP=1
+              fi
             else
               echo "Skipping fixup commit: $HEAD_SHA"
+
+              if ! git show -s --format='%s' $HEAD_SHA | grep -qF "[FIXUP]"; then
+                FIXUP=0
+              fi
             fi
 
             git checkout HEAD~1 > /dev/null 2> /dev/null
