@@ -142,14 +142,27 @@ void init_tg_rt_entry(struct task_group *tg, struct rq *served_rq,
 	tg->dl_se[cpu] = dl_se;
 }
 
+static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq);
+static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool first);
+
 static bool rt_server_has_tasks(struct sched_dl_entity *dl_se)
 {
-	return false;
+	return !!dl_se->my_q->rt.rt_nr_running;
 }
 
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se)
 {
-	return NULL;
+	struct rt_rq *rt_rq = &dl_se->my_q->rt;
+	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct task_struct *p;
+
+	if (dl_se->my_q->rt.rt_nr_running == 0)
+		return NULL;
+
+	p = rt_task_of(pick_next_rt_entity(rt_rq));
+	set_next_task_rt(rq, p, true);
+
+	return p;
 }
 
 int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
@@ -426,6 +439,7 @@ static inline int rt_se_prio(struct sched_rt_entity *rt_se)
 static void update_curr_rt(struct rq *rq)
 {
 	struct task_struct *donor = rq->donor;
+	struct rt_rq *rt_rq;
 	s64 delta_exec;
 
 	if (donor->sched_class != &rt_sched_class)
@@ -435,8 +449,18 @@ static void update_curr_rt(struct rq *rq)
 	if (unlikely(delta_exec <= 0))
 		return;
 
-	if (!rt_bandwidth_enabled())
+	if (!rt_group_sched_enabled())
 		return;
+
+	if (!dl_bandwidth_enabled())
+		return;
+
+	rt_rq = rt_rq_of_se(&donor->rt);
+	if (is_dl_group(rt_rq)) {
+		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
+
+		dl_server_update(dl_se, delta_exec);
+	}
 }
 
 static void
@@ -447,7 +471,7 @@ inc_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 	/*
 	 * Change rq's cpupri only if rt_rq is the top queue.
 	 */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && &rq->rt != rt_rq)
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
 		return;
 
 	if (rq->online && prio < prev_prio)
@@ -462,7 +486,7 @@ dec_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 	/*
 	 * Change rq's cpupri only if rt_rq is the top queue.
 	 */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && &rq->rt != rt_rq)
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
 		return;
 
 	if (rq->online && rt_rq->highest_prio.curr != prev_prio)
@@ -531,6 +555,15 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	rt_rq->rr_nr_running += rt_se_rr_nr_running(rt_se);
 
 	inc_rt_prio(rt_rq, rt_se_prio(rt_se));
+
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
+		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
+
+		if (!dl_se->dl_throttled)
+			add_nr_running(rq_of_rt_rq(rt_rq), 1);
+	} else {
+		add_nr_running(rq_of_rt_rq(rt_rq), 1);
+	}
 }
 
 static inline
@@ -541,6 +574,15 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	rt_rq->rr_nr_running -= rt_se_rr_nr_running(rt_se);
 
 	dec_rt_prio(rt_rq, rt_se_prio(rt_se));
+
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
+		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
+
+		if (!dl_se->dl_throttled)
+			sub_nr_running(rq_of_rt_rq(rt_rq), 1);
+	} else {
+		sub_nr_running(rq_of_rt_rq(rt_rq), 1);
+	}
 }
 
 /*
@@ -722,6 +764,14 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	check_schedstat_required();
 	update_stats_wait_start_rt(rt_rq_of_se(rt_se), rt_se);
 
+	/* Task arriving in an idle group of tasks. */
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
+	    is_dl_group(rt_rq) && rt_rq->rt_nr_running == 0) {
+		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
+
+		dl_server_start(dl_se);
+	}
+
 	enqueue_rt_entity(rt_se, flags);
 
 	if (task_is_blocked(p))
@@ -740,6 +790,14 @@ static bool dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_rt_entity(rt_se, flags);
 
 	dequeue_pushable_task(rt_rq, p);
+
+	/* Last task of the task group. */
+	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
+	    is_dl_group(rt_rq) && rt_rq->rt_nr_running == 0) {
+		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
+
+		dl_server_stop(dl_se);
+	}
 
 	return true;
 }
