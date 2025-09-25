@@ -2124,7 +2124,8 @@ static void group_pull_rt_task(struct rt_rq *this_rt_rq)
 			 * p if it is lower in priority than the
 			 * current task on the run queue
 			 */
-			if (p->prio < src_rq->curr->prio)
+			if (src_rq->curr->sched_task_group == this_rt_rq->tg &&
+			    p->prio < src_rq->curr->prio)
 				goto skip;
 
 			if (is_migration_disabled(p)) {
