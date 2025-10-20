@@ -2102,16 +2102,16 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
 	};
 
 	/*
-	* Since we truncate DL_SCALE bits, make sure we're at least
-	* that big.
-	*/
+	 * Since we truncate DL_SCALE bits, make sure we're at least
+	 * that big.
+	 */
 	if (runtime != 0 && runtime < (1ULL << DL_SCALE))
 		return -EINVAL;
 
 	/*
-	* Since we use the MSB for wrap-around and sign issues, make
-	* sure it's not set (mind that period can be equal to zero).
-	*/
+	 * Since we use the MSB for wrap-around and sign issues, make
+	 * sure it's not set (mind that period can be equal to zero).
+	 */
 	if (period & (1ULL << 63))
 		return -EINVAL;
 
