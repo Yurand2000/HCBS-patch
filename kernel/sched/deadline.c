@@ -353,7 +353,7 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 	update_rq_clock(rq);
 	dl_server_stop(dl_se);
 
-	new_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
+	new_bw = to_ratio(rt_period, rt_runtime);
 	dl_rq_change_utilization(rq, dl_se, new_bw);
 
 	dl_se->dl_runtime  = rt_runtime;
