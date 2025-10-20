@@ -2209,7 +2209,7 @@ static int sched_rt_global_constraints(void)
 }
 #endif /* CONFIG_SYSCTL */
 
-int sched_rt_can_attach(struct task_group *tg, struct task_struct *tsk)
+int sched_rt_can_attach(struct task_group *tg)
 {
 	/* Don't accept real-time tasks when there is no way for them to run */
 	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)

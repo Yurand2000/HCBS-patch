@@ -633,7 +633,7 @@ change:
 		 */
 		if (rt_group_sched_enabled() &&
 				dl_bandwidth_enabled() && rt_policy(policy) &&
-				!sched_rt_can_attach(task_group(p), p) &&
+				!sched_rt_can_attach(task_group(p)) &&
 				!task_group_is_autogroup(task_group(p))) {
 			retval = -EPERM;
 			goto unlock;
