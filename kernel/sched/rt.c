@@ -872,11 +872,6 @@ static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
 	return next;
 }
 
-static struct task_struct *_pick_next_task_rt(struct rq *rq)
-{
-	return NULL;
-}
-
 static struct task_struct *pick_task_rt(struct rq *rq)
 {
 	struct task_struct *p;
@@ -884,7 +879,7 @@ static struct task_struct *pick_task_rt(struct rq *rq)
 	if (!sched_rt_runnable(rq))
 		return NULL;
 
-	p = _pick_next_task_rt(rq);
+	p = rt_task_of(pick_next_rt_entity(&rq->rt));
 
 	return p;
 }
