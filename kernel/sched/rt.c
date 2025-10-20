@@ -165,7 +165,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 	if (!tg->rt_rq)
 		return 0;
 
-	tg->dl_se = kcalloc(nr_cpu_ids, sizeof(dl_se), GFP_KERNEL);
+	tg->dl_se = kcalloc(nr_cpu_ids, sizeof(struct sched_dl_entity *), GFP_KERNEL);
 	if (!tg->dl_se) {
 		kfree(tg->rt_rq);
 		tg->rt_rq = NULL;
