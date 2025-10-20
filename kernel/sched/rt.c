@@ -178,13 +178,13 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		s_rq = kzalloc_node(sizeof(struct rq),
 				     GFP_KERNEL, cpu_to_node(i));
 		if (!s_rq)
-			return 0;
+			goto no_mem_cleanup;
 
 		dl_se = kzalloc_node(sizeof(struct sched_dl_entity),
 				     GFP_KERNEL, cpu_to_node(i));
 		if (!dl_se) {
 			kfree(s_rq);
-			return 0;
+			goto no_mem_cleanup;
 		}
 
 		init_rt_rq(&s_rq->rt);
@@ -202,6 +202,18 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 	}
 
 	return 1;
+
+no_mem_cleanup:
+	for_each_possible_cpu(i) {
+		kfree(tg->rt_rq[i]);
+		kfree(tg->dl_se[i]);
+	}
+
+	kfree(tg->rt_rq);
+	kfree(tg->dl_se);
+	tg->rt_rq = NULL;
+	tg->dl_se = NULL;
+	return 0;
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED: */
