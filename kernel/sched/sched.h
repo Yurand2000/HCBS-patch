@@ -387,7 +387,7 @@ extern void dl_server_init(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq,
 extern void sched_init_dl_servers(void);
 extern int dl_check_tg(unsigned long total);
 extern void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period);
-extern bool is_active_sched_group(struct task_group *tg);
+extern bool is_live_sched_group(struct task_group *tg);
 
 extern void dl_server_update_idle_time(struct rq *rq,
 		    struct task_struct *p);

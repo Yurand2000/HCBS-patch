@@ -2231,8 +2231,8 @@ int sched_rt_can_attach(struct task_group *tg)
 	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
 		return 0;
 
-	/* tasks can be attached only if the taskgroup has no active children. */
-	return (int)is_active_sched_group(tg);
+	/* tasks can be attached only if the taskgroup has no live children. */
+	return (int)is_live_sched_group(tg);
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED */
