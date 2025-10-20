@@ -117,7 +117,6 @@ void free_rt_sched_group(struct task_group *tg)
 		dl_init_tg(tg->dl_se[i], 0, tg->dl_se[i]->dl_period);
 
 		raw_spin_rq_lock_irqsave(cpu_rq(i), flags);
-		BUG_ON(tg->rt_rq[i]->rt_nr_running);
 		hrtimer_cancel(&tg->dl_se[i]->dl_timer);
 		raw_spin_rq_unlock_irqrestore(cpu_rq(i), flags);
 		kfree(tg->dl_se[i]);
