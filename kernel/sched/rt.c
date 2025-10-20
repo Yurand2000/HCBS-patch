@@ -166,8 +166,6 @@ static void destroy_rt_bandwidth(struct rt_bandwidth *rt_b)
 	hrtimer_cancel(&rt_b->rt_period_timer);
 }
 
-#define rt_entity_is_task(rt_se) (!(rt_se)->my_q)
-
 void unregister_rt_sched_group(struct task_group *tg)
 {
 	if (!rt_group_sched_enabled())
@@ -265,8 +263,6 @@ err:
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED: */
-
-#define rt_entity_is_task(rt_se) (1)
 
 void unregister_rt_sched_group(struct task_group *tg) { }
 

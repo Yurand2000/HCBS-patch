@@ -3041,9 +3041,11 @@ extern void set_rq_offline(struct rq *rq);
 extern bool sched_smp_initialized;
 
 #ifdef CONFIG_RT_GROUP_SCHED
+#define rt_entity_is_task(rt_se) (!(rt_se)->my_q)
+
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
-	WARN_ON_ONCE(rt_se->my_q);
+	WARN_ON_ONCE(!rt_entity_is_task(rt_se));
 
 	return container_of(rt_se, struct task_struct, rt);
 }
@@ -3069,6 +3071,8 @@ static inline struct rq *rq_of_rt_se(struct sched_rt_entity *rt_se)
 	return rt_rq->rq;
 }
 #else
+#define rt_entity_is_task(rt_se) (1)
+
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
 	return container_of(rt_se, struct task_struct, rt);
