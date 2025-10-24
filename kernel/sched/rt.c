@@ -216,7 +216,7 @@ no_mem_cleanup:
 	return 0;
 }
 
-#else /* !CONFIG_RT_GROUP_SCHED: */
+#else /* !CONFIG_RT_GROUP_SCHED */
 
 void unregister_rt_sched_group(struct task_group *tg) { }
 
@@ -226,7 +226,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 {
 	return 1;
 }
-#endif /* !CONFIG_RT_GROUP_SCHED */
+#endif /* CONFIG_RT_GROUP_SCHED */
 
 static inline bool need_pull_rt_task(struct rq *rq, struct task_struct *prev)
 {
