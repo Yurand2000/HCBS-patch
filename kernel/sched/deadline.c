@@ -358,7 +358,7 @@ int dl_check_tg(unsigned long total)
 {
 	unsigned long flags;
 	int which_cpu;
-	int cpus;
+	int cap;
 	struct dl_bw *dl_b;
 	u64 gen = ++dl_cookie;
 
@@ -366,13 +366,13 @@ int dl_check_tg(unsigned long total)
 		rcu_read_lock_sched();
 
 		if (!dl_bw_visited(which_cpu, gen)) {
-			cpus = dl_bw_cpus(which_cpu);
+			cap = dl_bw_capacity(which_cpu);
 			dl_b = dl_bw_of(which_cpu);
 
 			raw_spin_lock_irqsave(&dl_b->lock, flags);
 
 			if (dl_b->bw != -1 &&
-			    dl_b->bw * cpus < dl_b->total_bw + total * cpus) {
+			    cap_scale(dl_b->bw, cap) < dl_b->total_bw + cap_scale(total, cap)) {
 				raw_spin_unlock_irqrestore(&dl_b->lock, flags);
 				rcu_read_unlock_sched();
 
