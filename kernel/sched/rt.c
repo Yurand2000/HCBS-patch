@@ -1767,7 +1767,7 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	if (!task_on_rq_queued(p) || rt_rq->rt_nr_running)
 		return;
 
-	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED))
+	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
 		rt_queue_pull_task(rt_rq);
 }
 
@@ -1788,6 +1788,8 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
+	struct rt_rq *rt_rq = rt_rq_of_se(&p->rt);
+
 	/*
 	 * If we are running, update the avg_rt tracking, as the running time
 	 * will now on be accounted into the latter.
@@ -1803,17 +1805,14 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	 * then see if we can move to another run queue.
 	 */
 	if (task_on_rq_queued(p)) {
-
-#ifndef CONFIG_RT_GROUP_SCHED
-		if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
-			rt_queue_push_tasks(rt_rq_of_se(&p->rt));
-#else
-		if (rt_rq_of_se(&p->rt)->overloaded) {
-		} else {
+		if(IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
 			if (p->prio < rq->curr->prio)
 				resched_curr(rq);
+		} else {
+			if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
+				rt_queue_push_tasks(rt_rq_of_se(&p->rt));
 		}
-#endif
+
 		if (p->prio < rq->donor->prio && cpu_online(cpu_of(rq)))
 			resched_curr(rq);
 	}
