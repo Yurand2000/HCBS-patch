@@ -1846,12 +1846,12 @@ void inc_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	u64 deadline = dl_se->deadline;
 
 	dl_rq->dl_nr_running++;
-	if (!dl_server(dl_se)) {
-		add_nr_running(rq_of_dl_rq(dl_rq), 1);
-	} else if (dl_se != &rq_of_dl_rq(dl_rq)->fair_server) {
-		struct rt_rq *rt_rq = &dl_se->my_q->rt;
 
-		add_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	if (!dl_server(dl_se))
+		add_nr_running(rq_of_dl_rq(dl_rq), 1);
+	else if (rq_of_dl_se(dl_se) != dl_se->my_q) {
+		WARN_ON(dl_se->my_q->rt.rt_nr_running != dl_se->my_q->nr_running);
+		add_nr_running(rq_of_dl_rq(dl_rq), dl_se->my_q->nr_running);
 	}
 
 	inc_dl_deadline(dl_rq, deadline);
@@ -1862,12 +1862,12 @@ void dec_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 {
 	WARN_ON(!dl_rq->dl_nr_running);
 	dl_rq->dl_nr_running--;
-	if (!dl_server(dl_se)) {
-		sub_nr_running(rq_of_dl_rq(dl_rq), 1);
-	} else if (dl_se != &rq_of_dl_rq(dl_rq)->fair_server) {
-		struct rt_rq *rt_rq = &dl_se->my_q->rt;
 
-		sub_nr_running(rq_of_dl_rq(dl_rq), rt_rq->rt_nr_running);
+	if (!dl_server(dl_se))
+		sub_nr_running(rq_of_dl_rq(dl_rq), 1);
+	else if (rq_of_dl_se(dl_se) != dl_se->my_q) {
+		WARN_ON(dl_se->my_q->rt.rt_nr_running != dl_se->my_q->nr_running);
+		sub_nr_running(rq_of_dl_rq(dl_rq), dl_se->my_q->nr_running);
 	}
 
 	dec_dl_deadline(dl_rq, dl_se->deadline);
