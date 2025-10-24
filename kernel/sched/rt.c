@@ -362,10 +362,10 @@ static void rt_queue_pull_to_group(struct rt_rq *rt_rq)
 	queue_balance_callback(global_rq, &per_cpu(rt_group_pull_head, global_rq->cpu),
 			       group_pull_rt_task_callback);
 }
-#else
+#else /* !CONFIG_RT_GROUP_SCHED */
 static inline void rt_queue_push_from_group(struct rt_rq *rt_rq) {};
 static inline void rt_queue_pull_to_group(struct rt_rq *rt_rq) {};
-#endif
+#endif /* CONFIG_RT_GROUP_SCHED */
 
 static void enqueue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
 {
@@ -2205,7 +2205,7 @@ static void group_pull_rt_task_callback(struct rq *global_rq)
 	group_pull_rt_task(rt_rq);
 	global_rq->rq_to_pull_to = NULL;
 }
-#else /* CONFIG_RT_GROUP_SCHED */
+#else /* !CONFIG_RT_GROUP_SCHED */
 static void group_pull_rt_task(struct rt_rq *this_rt_rq) { }
 static void group_push_rt_tasks(struct rt_rq *rt_rq) { }
 #endif /* CONFIG_RT_GROUP_SCHED */
