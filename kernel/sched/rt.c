@@ -2218,7 +2218,7 @@ int sched_rt_can_attach(struct task_group *tg)
 	return 1;
 }
 
-#else /* !CONFIG_RT_GROUP_SCHED: */
+#else /* !CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_SYSCTL
 static int sched_rt_global_constraints(void)
@@ -2226,7 +2226,7 @@ static int sched_rt_global_constraints(void)
 	return 0;
 }
 #endif /* CONFIG_SYSCTL */
-#endif /* !CONFIG_RT_GROUP_SCHED */
+#endif /* CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_SYSCTL
 static int sched_rt_global_validate(void)
