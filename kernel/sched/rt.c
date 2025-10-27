@@ -183,7 +183,7 @@ static void pull_rt_task(struct rq *);
 
 static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 {
-	struct rq *rq = container_of(rt_rq, struct rq, rt);
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
 
 	if (!has_pushable_tasks(rt_rq))
 		return;
@@ -193,7 +193,7 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 
 static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 {
-	struct rq *rq = container_of(rt_rq, struct rq, rt);
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
 
 	queue_balance_callback(rq, &per_cpu(rt_pull_head, rq->cpu), pull_rt_task);
 }
