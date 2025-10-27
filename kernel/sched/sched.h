@@ -857,8 +857,6 @@ struct rt_rq {
 	raw_spinlock_t		rt_runtime_lock;
 
 	unsigned int		rt_nr_boosted;
-
-	struct rq		*rq; /* this is always top-level rq, cache? */
 #endif
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group	*tg; /* this tg has "this" rt_rq on given CPU for runnable entities */
@@ -3335,11 +3333,16 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 	return container_of_const(rt_se, struct task_struct, rt);
 }
 
+static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
+{
+	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
+	return container_of_const(rt_rq, struct rq, rt);
+}
+
 static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	/* Cannot fold with non-CONFIG_RT_GROUP_SCHED version, layout */
-	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
-	return rt_rq->rq;
+	return cpu_rq(served_rq_of_rt_rq(rt_rq)->cpu);
 }
 
 static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
@@ -3351,6 +3354,11 @@ static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
 	return container_of_const(rt_se, struct task_struct, rt);
+}
+
+static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
+{
+	return container_of_const(rt_rq, struct rq, rt);
 }
 
 static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
