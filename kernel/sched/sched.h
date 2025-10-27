@@ -1926,6 +1926,10 @@ DEFINE_LOCK_GUARD_1(rq_lock_irqsave, struct rq,
 		    rq_unlock_irqrestore(_T->lock, &_T->rf),
 		    struct rq_flags rf)
 
+DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irq, struct rq,
+		    raw_spin_rq_lock_irq(_T->lock),
+		    raw_spin_rq_unlock_irq(_T->lock))
+
 static inline struct rq *this_rq_lock_irq(struct rq_flags *rf)
 	__acquires(rq->lock)
 {

@@ -394,7 +394,7 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 	int is_active;
 	u64 new_bw;
 
-	raw_spin_rq_lock_irq(rq);
+	guard(raw_spin_rq_lock_irq)(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
 
 	update_rq_clock(rq);
@@ -415,8 +415,6 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 
 	if (is_active)
 		dl_server_start(dl_se);
-
-	raw_spin_rq_unlock_irq(rq);
 }
 #endif
 
