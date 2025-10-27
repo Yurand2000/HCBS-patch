@@ -322,7 +322,7 @@ static void group_pull_rt_task_callback(struct rq *);
 
 static void rt_queue_push_from_group(struct rt_rq *rt_rq)
 {
-	struct rq *rq = container_of(rt_rq, struct rq, rt);
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
 	struct rq *global_rq = cpu_rq(rq->cpu);
 
 	if (global_rq->rq_to_push_from)
@@ -338,7 +338,7 @@ static void rt_queue_push_from_group(struct rt_rq *rt_rq)
 
 static void rt_queue_pull_to_group(struct rt_rq *rt_rq)
 {
-	struct rq *rq = container_of(rt_rq, struct rq, rt);
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
 	struct rq *global_rq = cpu_rq(rq->cpu);
 	struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
