@@ -1459,7 +1459,7 @@ static void update_curr_dl_se(struct rq *rq, struct sched_dl_entity *dl_se, s64 
 
 		hrtimer_try_to_cancel(&dl_se->dl_timer);
 
-		replenish_dl_new_period(dl_se, rq_of_dl_se(dl_se));
+		replenish_dl_new_period(dl_se, rq);
 
 		/*
 		 * Not being able to start the timer seems problematic. If it could not
