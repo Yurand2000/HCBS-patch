@@ -141,11 +141,6 @@ void init_tg_rt_entry(struct task_group *tg, struct rq *served_rq,
 	tg->dl_se[cpu] = dl_se;
 }
 
-static bool rt_server_has_tasks(struct sched_dl_entity *dl_se)
-{
-	return false;
-}
-
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se)
 {
 	return NULL;
@@ -195,7 +190,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		dl_se->dl_density = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
 		dl_se->dl_server = 1;
 
-		dl_server_init(dl_se, &cpu_rq(i)->dl, s_rq, rt_server_has_tasks, rt_server_pick);
+		dl_server_init(dl_se, &cpu_rq(i)->dl, s_rq, rt_server_pick);
 
 		init_tg_rt_entry(tg, s_rq, dl_se, i, parent->dl_se[i]);
 	}
