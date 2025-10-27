@@ -3128,7 +3128,7 @@ static inline struct sched_dl_entity *dl_group_of(struct rt_rq *rt_rq)
 	if (WARN_ON_ONCE(!is_dl_group(rt_rq)))
 		return NULL;
 
-	return rt_rq->tg->dl_se[cpu_of(rt_rq->rq)];
+	return rt_rq->tg->dl_se[served_rq_of_rt_rq(rt_rq)->cpu];
 }
 #else
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
