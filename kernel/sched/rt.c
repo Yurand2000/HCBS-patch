@@ -122,7 +122,7 @@ void free_rt_sched_group(struct task_group *tg)
 		kfree(tg->dl_se[i]);
 
 		/* Free the local per-cpu runqueue */
-		served_rq = container_of(tg->rt_rq[i], struct rq, rt);
+		served_rq = served_rq_of_rt_rq(tg->rt_rq[i]);
 		kfree(served_rq);
 	}
 
@@ -135,7 +135,6 @@ void init_tg_rt_entry(struct task_group *tg, struct rq *served_rq,
 		struct sched_dl_entity *parent)
 {
 	served_rq->rt.highest_prio.curr = MAX_RT_PRIO-1;
-	served_rq->rt.rq = cpu_rq(cpu);
 	served_rq->rt.tg = tg;
 
 	tg->rt_rq[cpu] = &served_rq->rt;
