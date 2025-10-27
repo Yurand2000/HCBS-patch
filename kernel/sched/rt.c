@@ -325,7 +325,7 @@ static void rt_queue_push_from_group(struct rt_rq *rt_rq)
 	struct rq *global_rq = cpu_rq(rq->cpu);
 
 	BUG_ON(rt_rq == NULL);
-	BUG_ON(rt_rq->rq != global_rq);
+	BUG_ON(rq == global_rq);
 
 	if (global_rq->rq_to_push_from)
 		return;
@@ -346,7 +346,7 @@ static void rt_queue_pull_to_group(struct rt_rq *rt_rq)
 
 	BUG_ON(rt_rq == NULL);
 	BUG_ON(!is_dl_group(rt_rq));
-	BUG_ON(rt_rq->rq != global_rq);
+	BUG_ON(rq == global_rq);
 
 	if (dl_se->dl_throttled || global_rq->rq_to_pull_to)
 		return;
@@ -2197,7 +2197,7 @@ static void group_push_rt_tasks_callback(struct rq *global_rq)
 	struct rt_rq *rt_rq = &global_rq->rq_to_push_from->rt;
 
 	BUG_ON(global_rq->rq_to_push_from == NULL);
-	BUG_ON(rt_rq->rq != global_rq);
+	BUG_ON(served_rq_of_rt_rq(rt_rq) == global_rq);
 
 	if ((rt_rq->rt_nr_running > 1) ||
 	    (dl_group_of(rt_rq)->dl_throttled == 1)) {
@@ -2214,7 +2214,7 @@ static void group_pull_rt_task_callback(struct rq *global_rq)
 	struct rt_rq *rt_rq = &global_rq->rq_to_pull_to->rt;
 
 	BUG_ON(global_rq->rq_to_pull_to == NULL);
-	BUG_ON(rt_rq->rq != global_rq);
+	BUG_ON(served_rq_of_rt_rq(rt_rq) == global_rq);
 
 	group_pull_rt_task(rt_rq);
 	global_rq->rq_to_pull_to = NULL;
