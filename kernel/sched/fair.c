@@ -8988,6 +8988,12 @@ idle:
 	return NULL;
 }
 
+static bool fair_server_try_pull_task(struct sched_dl_entity *dl_se)
+{
+	return true;
+}
+
+
 static struct task_struct *
 fair_server_pick_task(struct sched_dl_entity *dl_se, struct rq_flags *rf)
 {
@@ -9000,7 +9006,8 @@ void fair_server_init(struct rq *rq)
 
 	init_dl_entity(dl_se);
 
-	dl_server_init(dl_se, &rq->dl, rq, fair_server_pick_task);
+	dl_server_init(dl_se, &rq->dl, rq,
+		       fair_server_try_pull_task, fair_server_pick_task);
 }
 
 /*
