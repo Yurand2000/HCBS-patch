@@ -518,4 +518,7 @@ __DEFINE_LOCK_GUARD_0(_name, _lock)
 
 #define DEFINE_LOCK_GUARD_1_COND(X...) CONCATENATE(DEFINE_LOCK_GUARD_1_COND_, COUNT_ARGS(X))(X)
 
+#define RELEASE_LOCK(_name, _var) \
+	({class_##_name##_destructor(&_var); _var.lock = NULL;})
+
 #endif /* _LINUX_CLEANUP_H */

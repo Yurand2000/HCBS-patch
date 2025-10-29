@@ -9223,9 +9223,9 @@ void sched_move_task(struct task_struct *tsk, bool for_autogroup)
 		DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 	struct balance_callback *head;
 	struct rq *rq;
-	struct rq_flags rf;
 
-	rq = task_rq_lock(tsk, &rf);
+	CLASS(task_rq_lock, rq_guard)(tsk);
+	rq = rq_guard.rq;
 
 	update_rq_clock(rq);
 
@@ -9255,7 +9255,7 @@ void sched_move_task(struct task_struct *tsk, bool for_autogroup)
 
 	preempt_disable();
 	head = splice_balance_callbacks(rq);
-	task_rq_unlock(rq, tsk, &rf);
+	RELEASE_LOCK(task_rq_lock, rq_guard);
 	balance_callbacks(rq, head);
 	preempt_enable();
 }
