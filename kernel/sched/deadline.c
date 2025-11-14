@@ -217,7 +217,7 @@ __dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	dl_groups_root = to_ratio(root_task_group.dl_bandwidth.dl_period,
-				  root_task_group.dl_bandwidth.dl_runtime);
+				  root_task_group.dl_bandwidth.dl_runtime) / num_online_cpus();
 #endif
 	return dl_b->bw != -1 &&
 	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
@@ -424,29 +424,34 @@ static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64
 {
 	int i, other_cpus_active;
 
-	if (tg->parent && tg->parent != &root_task_group)
-	{
-		other_cpus_active = 0;
-		for_each_online_cpu (i) {
-			if (i == cpu)
-				continue;
+	if (tg->parent == NULL || tg->parent == &root_task_group)
+		return;
 
-			if (tg->dl_se[i]->dl_runtime) {
-				other_cpus_active = 1;
-				break;
-			}
+	other_cpus_active = 0;
+	for_each_online_cpu (i) {
+		if (i == cpu)
+			continue;
+
+		if (tg->dl_se[i]->dl_runtime) {
+			other_cpus_active = 1;
+			break;
 		}
+	}
 
-		if (rt_runtime == 0 && old_runtime != 0 && !other_cpus_active && !sched_group_has_live_siblings(tg)) {
-			for_each_online_cpu(i) {
-				guard(raw_spin_rq_lock_irq)(cpu_rq(i));
-				__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
-			}
-		} else if (rt_runtime != 0 && old_runtime == 0 && !other_cpus_active && !sched_group_has_live_siblings(tg)) {
-			for_each_online_cpu(i) {
-				guard(raw_spin_rq_lock_irq)(cpu_rq(i));
-				__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
-			}
+	if (other_cpus_active)
+		return;
+
+	if (rt_runtime == 0 && old_runtime != 0 &&
+	    !sched_group_has_live_siblings(tg)) {
+		for_each_online_cpu(i) {
+			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
+		}
+	} else if (rt_runtime != 0 && old_runtime == 0 &&
+		   !sched_group_has_live_siblings(tg)) {
+		for_each_online_cpu(i) {
+			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
 		}
 	}
 }
@@ -1706,8 +1711,6 @@ void dl_server_update_idle_time(struct rq *rq, struct task_struct *p)
 
 void dl_server_update(struct sched_dl_entity *dl_se, s64 delta_exec)
 {
-	if (!dl_server(dl_se)) return;
-
 	/* 0 runtime = fair server disabled */
 	if (dl_se->dl_runtime)
 		update_curr_dl_se(rq_of_dl_se(dl_se), dl_se, delta_exec);
@@ -3292,7 +3295,7 @@ int sched_dl_global_validate(void)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	dl_groups_root = to_ratio(root_task_group.dl_bandwidth.dl_period,
-				  root_task_group.dl_bandwidth.dl_runtime);
+				  root_task_group.dl_bandwidth.dl_runtime) / num_online_cpus();
 #endif
 
 	/*

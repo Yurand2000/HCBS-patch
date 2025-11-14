@@ -574,7 +574,6 @@ static inline struct task_group *css_tg(struct cgroup_subsys_state *css)
 }
 
 extern int tg_nop(struct task_group *tg, void *data);
-extern int tg_rt_has_valid_runtime(struct task_group *tg);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 extern void free_fair_sched_group(struct task_group *tg);
@@ -607,10 +606,10 @@ extern void init_tg_rt_entry(struct task_group *tg, struct rq *s_rq,
 extern int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us);
 extern int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us);
 extern int sched_group_set_rt_multi_runtime(struct task_group *tg,
-					    unsigned long rt_runtime_us,
-					    int cpu_id);
+					     unsigned long rt_runtime_us,
+					     int cpu_id);
 extern int sched_group_rt_multi_runtime(struct task_group *tg, long *rt_runtimes,
-				 size_t size);
+					 size_t size);
 extern long sched_group_rt_runtime(struct task_group *tg);
 extern long sched_group_rt_period(struct task_group *tg);
 extern int sched_rt_can_attach(struct task_group *tg);

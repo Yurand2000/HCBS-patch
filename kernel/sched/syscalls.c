@@ -635,13 +635,8 @@ change:
 				dl_bandwidth_enabled() && rt_policy(policy) &&
 				!sched_rt_can_attach(task_group(p)) &&
 				!task_group_is_autogroup(task_group(p))) {
-			struct task_group *tg = task_group(p);
-
-			if ((tg == &root_task_group && tg->dl_bandwidth.dl_runtime == 0) ||
-			    (tg != &root_task_group && !tg_rt_has_valid_runtime(tg))) {
-				retval = -EPERM;
-				goto unlock;
-			}
+			retval = -EPERM;
+			goto unlock;
 		}
 #endif
 		if (dl_bandwidth_enabled() && dl_policy(policy) &&
