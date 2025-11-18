@@ -251,6 +251,8 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 	return 1;
 }
 
+static inline int tg_has_rt_tasks(struct task_group *tg);
+
 #else /* !CONFIG_RT_GROUP_SCHED */
 
 void unregister_rt_sched_group(struct task_group *tg) { }
@@ -2267,13 +2269,70 @@ static void task_woken_rt(struct rq *rq, struct task_struct *p)
 		push_rt_tasks(rq);
 }
 
+static int enable_dl_servers(struct task_group *tg, void *data)
+{
+	int cid = *(int *)data;
+	struct sched_dl_entity *dl_se = tg->dl_se[cid];
+	struct rt_rq *rt_rq = tg->rt_rq[cid];
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
+
+	if (task_group_is_autogroup(tg) || tg == &root_task_group)
+		return 0;
+
+	// if (!tg_has_rt_tasks(tg))
+	// 	return 0;
+
+	// rt_queue_pull_to_group(rt_rq);
+
+	update_curr_rt(rq);
+	if (rq->rt.overloaded)
+		rt_set_overload(rq);
+
+	if (rt_rq->rt_nr_running > 0)
+		dl_server_start(dl_se);
+
+	return 0;
+}
+
+static int disable_dl_servers(struct task_group *tg, void *data)
+{
+	int cid = *(int *)data;
+	struct sched_dl_entity *dl_se = tg->dl_se[cid];
+	struct rt_rq *rt_rq = tg->rt_rq[cid];
+	struct rq *rq = served_rq_of_rt_rq(rt_rq);
+
+	if (task_group_is_autogroup(tg) || tg == &root_task_group)
+		return 0;
+
+	// if (!tg_has_rt_tasks(tg))
+	// 	return 0;
+
+	if (WARN_ON(!tg->dl_se[cid] || !tg->rt_rq[cid]))
+		return 0;
+
+	update_curr_rt(rq);
+	if (rq->rt.overloaded)
+		rt_clear_overload(rq);
+
+	// rt_queue_push_from_group(rt_rq);
+	dl_server_stop(dl_se);
+	dl_se->dl_throttled = 0;
+
+	return 0;
+}
+
 /* Assumes rq->lock is held */
 static void rq_online_rt(struct rq *rq)
 {
 	if (rq->rt.overloaded)
 		rt_set_overload(rq);
 
-	/*FIXME: Enable the dl server! */
+	if (rt_group_sched_enabled()) {
+		rcu_read_lock();
+		walk_tg_tree(enable_dl_servers, tg_nop, &rq->cpu);
+		rcu_read_unlock();
+	}
+
 	cpupri_set(&rq->rd->cpupri, rq->cpu, rq->rt.highest_prio.curr);
 }
 
@@ -2283,7 +2342,12 @@ static void rq_offline_rt(struct rq *rq)
 	if (rq->rt.overloaded)
 		rt_clear_overload(rq);
 
-	/* FIXME: Disable the dl server! */
+	if (rt_group_sched_enabled()) {
+		rcu_read_lock();
+		walk_tg_tree(disable_dl_servers, tg_nop, &rq->cpu);
+		rcu_read_unlock();
+	}
+
 	cpupri_set(&rq->rd->cpupri, rq->cpu, CPUPRI_INVALID);
 }
 
