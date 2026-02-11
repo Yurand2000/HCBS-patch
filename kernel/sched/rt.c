@@ -285,14 +285,21 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 }
 
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq);
+static void pull_rt_task(struct rq *);
 
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct rq_flags *rf)
 {
 	struct rt_rq *rt_rq = &dl_se->my_q->rt;
 	struct task_struct *p;
 
-	if (!sched_rt_runnable(dl_se->my_q))
-		return NULL;
+	if (!sched_rt_runnable(dl_se->my_q)) {
+		rq_unpin_lock(rq, rf);
+		pull_rt_task(rq_of_rt_rq(rt_rq));
+		rq_repin_lock(rq, rf);
+
+		if (!sched_rt_runnable(dl_se->my_q))
+			return NULL;
+	}
 
 	p = rt_task_of(pick_next_rt_entity(rt_rq));
 
