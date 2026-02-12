@@ -4,6 +4,7 @@ set -e
 
 BASEDIR="$(dirname $(realpath $0))"
 CONFIG=$1
+COMMIT=${2:-edcc18778f465a95c7196d41c36066be40a13bad}
 
 if [ ! -f "$CONFIG" ]; then
     echo "Config file not provided"
@@ -19,20 +20,27 @@ fi
 
 : "${BUILD:=$BASEDIR/build}"
 
+BUILD=$(realpath $BUILD)
+
 mkdir -p "$BUILD/source"
 mkdir -p "$BUILD/build"
 
 if [ ! -d "$BUILD/source/hcbs" ]; then
     git clone \
-        --branch rt-cgroups-submission-251201 \
         --depth 1 \
         https://github.com/Yurand2000/HCBS-patch.git \
         "$BUILD/source/hcbs"
 fi
 
-SOURCE_DIR=$(realpath "$BUILD/source/hcbs")
+(
+    cd $BUILD/source/hcbs
+    git fetch --depth 1 origin $COMMIT
+    git checkout FETCH_HEAD
+)
+
+SOURCE_DIR="$BUILD/source/hcbs"
 CONFIG_NAME=$(basename -s .config "$CONFIG")
-BUILD_DIR=$(realpath "$BUILD/build/$CONFIG_NAME")
+BUILD_DIR="$BUILD/build/$CONFIG_NAME-$COMMIT/kernel"
 
 mkdir -p "$BUILD_DIR"
 

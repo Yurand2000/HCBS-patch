@@ -4,6 +4,7 @@ set -e
 
 DIR="$(dirname $(realpath $0))/../.."
 CONFIG=$1
+COMMIT=$2
 
 if [ ! -f "$CONFIG" ]; then
     echo "Config file not provided"
@@ -31,4 +32,4 @@ docker run --rm \
 	--volume "$DIR/build:/build:rw" \
     -e BUILD=/build \
     ubuntu_22_04_hcbs_build \
-    sh /scripts/build_debpkg_from_config.sh /config/$CONFIG_NAME
+    sh /scripts/build_debpkg_from_config.sh /config/$CONFIG_NAME $COMMIT

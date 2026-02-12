@@ -1,7 +1,15 @@
 # HCBS Distrib
 ### Create installable packages for the HCBS Patchset
 
-Quick start:
+Currently it only generates installable packages for Ubuntu, amd64 platform, starting from the configuration of Ubuntu Noble and adding HCBS on top of it.
+
+It currently compiles the latest *stable* HCBS patch.
+
+## 🛠️ Requirements:
+
+- Docker
+
+## 🚀 Quick start:
 
 ```bash
 > sh get_ubuntu_config.sh
@@ -10,9 +18,7 @@ Quick start:
     build/config/ubuntu-noble-amd64.config
 ```
 
----
-
-Breakdown:
+### Breakdown:
 
 ```bash
 # get the ubuntu-noble source, and get the config to compile a real-time ubuntu kernel for amd64.
@@ -24,6 +30,6 @@ ubuntu-noble-amd64.config
 ```
 
 ```bash
-# compile the kernel with the given <CFG> config file. This also takes the config and enables HCBS for it. It generates a debpkg file for easy installation. Usually you want to compile a ubuntu version, thus <CFG> will be a ubuntu related config file.
-> sh containers/ubuntu/build_debpkg_ubuntu_22_04.sh <CFG>
+# compile the kernel with the given <CFG> config file, given HCBS at the given commit [COMMIT]. This also takes the config and enables HCBS for it. It generates a debpkg file for easy installation. Usually you want to compile a ubuntu version, thus <CFG> will be a ubuntu related config file. If the commit is unspecified, it defaults to the latest 'stable' version of HCBS.
+> sh containers/ubuntu/build_debpkg_ubuntu_22_04.sh <CFG> [COMMIT]
 ```
