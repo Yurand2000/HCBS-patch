@@ -807,14 +807,6 @@ static bool dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	dequeue_pushable_task(rt_rq, p);
 
-	/* Last task of the task group. */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
-	    is_dl_group(rt_rq) && rt_rq->rt_nr_running == 0) {
-		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
-
-		dl_server_stop(dl_se);
-	}
-
 	return true;
 }
 
