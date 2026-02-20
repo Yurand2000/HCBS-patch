@@ -340,6 +340,9 @@ static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 }
 
 #ifdef CONFIG_RT_GROUP_SCHED
+static void group_push_rt_tasks(struct rt_rq *);
+static void group_pull_rt_task(struct rt_rq *);
+
 static DEFINE_PER_CPU(struct balance_callback, rt_group_push_head);
 static DEFINE_PER_CPU(struct balance_callback, rt_group_pull_head);
 static void group_push_rt_tasks_callback(struct rq *);
@@ -1771,6 +1774,28 @@ skip:
 }
 
 #ifdef CONFIG_RT_GROUP_SCHED
+static inline int get_earliest_wakeup_rt_rq(struct task_group *tg, struct cpumask* cpu_mask)
+{
+	int cpu, earliest_cpu;
+	u64 wakeup_time, earliest_wakeup_time;
+
+	if (cpumask_empty(cpu_mask))
+			return -1;
+
+	earliest_cpu = cpumask_first(cpu_mask);
+	earliest_wakeup_time = dl_next_period(tg->dl_se[earliest_cpu]);
+
+	for_each_cpu(cpu, cpu_mask) {
+		wakeup_time = dl_next_period(tg->dl_se[cpu]);
+		if (wakeup_time < earliest_wakeup_time) {
+			earliest_wakeup_time = wakeup_time;
+			earliest_cpu = cpu;
+		}
+	}
+
+	return earliest_cpu;
+}
+
 /*
  * Find the lowest priority runqueue among the runqueues of the same
  * task group. Unlike find_lowest_rt(), this does not mean that the
@@ -1779,7 +1804,7 @@ skip:
 static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_rt_rq)
 {
 	struct sched_domain *sd;
-	struct cpumask mask, *lowest_mask = &mask;
+	struct cpumask lowest_mask, throttled_mask;
 	struct sched_dl_entity *dl_se;
 	struct rt_rq *rt_rq;
 	int prio, lowest_prio;
@@ -1789,7 +1814,8 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 		return -1; /* No other targets possible */
 
 	lowest_prio = task->prio - 1;
-	cpumask_clear(lowest_mask);
+	cpumask_clear(&lowest_mask);
+	cpumask_clear(&throttled_mask);
 	for_each_cpu_and(cpu, cpu_online_mask, task->cpus_ptr) {
 		dl_se = task_rt_rq->tg->dl_se[cpu];
 		rt_rq = &dl_se->my_q->rt;
@@ -1799,21 +1825,23 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 		 * If we're on asym system ensure we consider the different capacities
 		 * of the CPUs when searching for the lowest_mask.
 		 */
-		if (dl_se->dl_throttled || !rt_task_fits_capacity(task, cpu))
+		if (!rt_task_fits_capacity(task, cpu))
 			continue;
 
-		if (prio >= lowest_prio) {
+		if (dl_se->dl_throttled)
+			cpumask_set_cpu(cpu, &throttled_mask);
+		else if (prio >= lowest_prio) {
 			if (prio > lowest_prio) {
-				cpumask_clear(lowest_mask);
+				cpumask_clear(&lowest_mask);
 				lowest_prio = prio;
 			}
 
-			cpumask_set_cpu(cpu, lowest_mask);
+			cpumask_set_cpu(cpu, &lowest_mask);
 		}
 	}
 
-	if (cpumask_empty(lowest_mask))
-		return -1;
+	if (cpumask_empty(&lowest_mask))
+		return get_earliest_wakeup_rt_rq(task_rt_rq->tg, &throttled_mask);
 
 	/*
 	 * At this point we have built a mask of CPUs representing the
@@ -1824,14 +1852,14 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 	 * it is most likely cache-hot in that location.
 	 */
 	cpu = task_cpu(task);
-	if (cpumask_test_cpu(cpu, lowest_mask))
+	if (cpumask_test_cpu(cpu, &lowest_mask))
 		return cpu;
 
 	/*
 	 * Otherwise, we consult the sched_domains span maps to figure
 	 * out which CPU is logically closest to our hot cache data.
 	 */
-	if (!cpumask_test_cpu(this_cpu, lowest_mask))
+	if (!cpumask_test_cpu(this_cpu, &lowest_mask))
 		this_cpu = -1; /* Skip this_cpu opt if not among lowest */
 
 	rcu_read_lock();
@@ -1849,7 +1877,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 				return this_cpu;
 			}
 
-			best_cpu = cpumask_any_and_distribute(lowest_mask,
+			best_cpu = cpumask_any_and_distribute(&lowest_mask,
 							      sched_domain_span(sd));
 			if (best_cpu < nr_cpu_ids) {
 				rcu_read_unlock();
@@ -1867,7 +1895,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 	if (this_cpu != -1)
 		return this_cpu;
 
-	cpu = cpumask_any_distribute(lowest_mask);
+	cpu = cpumask_any_distribute(&lowest_mask);
 	if (cpu < nr_cpu_ids)
 		return cpu;
 
@@ -1883,7 +1911,7 @@ static struct rt_rq *group_find_lock_lowest_rt_rq(struct task_struct *task, stru
 {
 	struct rq *rq = rq_of_rt_rq(rt_rq);
 	struct rq *lowest_rq;
-	struct rt_rq *lowest_rt_rq = NULL;
+	struct rt_rq *lowest_rt_rq;
 	struct sched_dl_entity *lowest_dl_se;
 	int tries, cpu;
 
@@ -1891,7 +1919,7 @@ static struct rt_rq *group_find_lock_lowest_rt_rq(struct task_struct *task, stru
 		cpu = group_find_lowest_rt_rq(task, rt_rq);
 
 		if ((cpu == -1) || (cpu == rq->cpu))
-			break;
+			return NULL;
 
 		lowest_dl_se = rt_rq->tg->dl_se[cpu];
 		lowest_rt_rq = &lowest_dl_se->my_q->rt;
@@ -1903,8 +1931,7 @@ static struct rt_rq *group_find_lock_lowest_rt_rq(struct task_struct *task, stru
 			 * retrying does not release any lock and is unlikely
 			 * to yield a different result.
 			 */
-			lowest_rt_rq = NULL;
-			break;
+			return NULL;
 		}
 
 		/* if the prio of this runqueue changed, try again */
@@ -1919,26 +1946,23 @@ static struct rt_rq *group_find_lock_lowest_rt_rq(struct task_struct *task, stru
 			 * check the task migration disable flag here too.
 			 */
 			if (unlikely(is_migration_disabled(task) ||
-				     lowest_dl_se->dl_throttled ||
 				     !cpumask_test_cpu(lowest_rq->cpu, &task->cpus_mask) ||
 				     task != pick_next_pushable_task(rt_rq))) {
 
 				double_unlock_balance(rq, lowest_rq);
-				lowest_rt_rq = NULL;
-				break;
+				return NULL;
 			}
 		}
 
 		/* If this rq is still suitable use it. */
 		if (lowest_rt_rq->highest_prio.curr > task->prio)
-			break;
+			return lowest_rt_rq;
 
 		/* try again */
 		double_unlock_balance(rq, lowest_rq);
-		lowest_rt_rq = NULL;
 	}
 
-	return lowest_rt_rq;
+	return NULL;
 }
 
 static int group_push_rt_task(struct rt_rq *rt_rq, bool pull)
@@ -1968,7 +1992,7 @@ retry:
 		 * If the current task does not belong to the same task group
 		 * we cannot push it away.
 		 */
-		if (rq->curr->sched_task_group != rt_rq->tg)
+		if (rq->donor->sched_task_group != rt_rq->tg)
 			return 0;
 
 		/*
@@ -1980,7 +2004,7 @@ retry:
 		 * Note that the stoppers are masqueraded as SCHED_FIFO
 		 * (cf. sched_set_stop_task()), so we can't rely on rt_task().
 		 */
-		if (rq->curr->sched_class != &rt_sched_class)
+		if (rq->donor->sched_class != &rt_sched_class)
 			return 0;
 
 		cpu = group_find_lowest_rt_rq(rq->curr, rt_rq);
@@ -2123,8 +2147,8 @@ static void group_pull_rt_task(struct rt_rq *this_rt_rq)
 			 * p if it is lower in priority than the
 			 * current task on the run queue
 			 */
-			if (src_rq->curr->sched_task_group == this_rt_rq->tg &&
-			    p->prio < src_rq->curr->prio)
+			if (src_rq->donor->sched_task_group == this_rt_rq->tg &&
+			    p->prio < src_rq->donor->prio)
 				goto skip;
 
 			if (is_migration_disabled(p)) {
@@ -2132,7 +2156,7 @@ static void group_pull_rt_task(struct rt_rq *this_rt_rq)
 				 * If the current task does not belong to the same task group
 				 * we cannot push it away.
 				 */
-				if (src_rq->curr->sched_task_group != this_rt_rq->tg)
+				if (src_rq->donor->sched_task_group != this_rt_rq->tg)
 					goto skip;
 
 				push_task = get_push_task(src_rq);
@@ -2177,8 +2201,7 @@ static void group_push_rt_tasks_callback(struct rq *global_rq)
 	if ((rt_rq->rt_nr_running > 1) ||
 	    (dl_group_of(rt_rq)->dl_throttled == 1)) {
 
-		while (group_push_rt_task(rt_rq, false))
-			;
+		group_push_rt_tasks(rt_rq);
 	}
 
 	global_rq->rq_to_push_from = NULL;
