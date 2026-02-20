@@ -1194,7 +1194,7 @@ static void update_dl_entity(struct sched_dl_entity *dl_se)
 	}
 }
 
-static inline u64 dl_next_period(struct sched_dl_entity *dl_se)
+u64 dl_next_period(struct sched_dl_entity *dl_se)
 {
 	return dl_se->deadline - dl_se->dl_deadline + dl_se->dl_period;
 }
