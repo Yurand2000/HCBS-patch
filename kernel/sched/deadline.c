@@ -205,8 +205,9 @@ void __dl_add(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
 static inline u64 get_dl_groups_bw(void)
 {
 #ifdef CONFIG_RT_GROUP_SCHED
-	return to_ratio(root_task_group.dl_bandwidth.dl_period,
-			root_task_group.dl_bandwidth.dl_runtime) / num_online_cpus();
+	guard(raw_spinlock_irqsave)(&root_task_group.dl_bandwidth.dl_bandwidth_lock);
+	return to_ratio(root_task_group.dl_bandwidth.periods[0],
+			root_task_group.dl_bandwidth.runtimes[0]);
 #else
 	return 0;
 #endif
@@ -392,7 +393,8 @@ bool is_live_sched_group(struct task_group *tg)
 	/* if there are no children, this is a leaf group, thus it is live */
 	guard(rcu)();
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		if (child->dl_bandwidth.dl_runtime > 0)
+		guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
+		if (child->dl_bandwidth.has_runtime)
 			is_active = 0;
 	}
 	return is_active;
@@ -405,7 +407,8 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 
 	guard(rcu)();
 	list_for_each_entry_rcu(child, &tg->parent->children, siblings) {
-		if (child != tg && child->dl_bandwidth.dl_runtime > 0)
+		guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
+		if (child != tg && child->dl_bandwidth.has_runtime)
 			has_active_siblings = 1;
 	}
 	return has_active_siblings;
@@ -443,13 +446,13 @@ static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64
 	if (rt_runtime == 0 && old_runtime != 0 &&
 	    !sched_group_has_live_siblings(tg)) {
 		for_each_online_cpu(i) {
-			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			guard(raw_spin_rq_lock_irqsave)(cpu_rq(i));
 			__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
 		}
 	} else if (rt_runtime != 0 && old_runtime == 0 &&
 		   !sched_group_has_live_siblings(tg)) {
 		for_each_online_cpu(i) {
-			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			guard(raw_spin_rq_lock_irqsave)(cpu_rq(i));
 			__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
 		}
 	}
@@ -464,9 +467,9 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	is_live_group = (int)is_live_sched_group(tg);
 
-	scoped_guard(raw_spin_rq_lock_irq, rq) {
+	scoped_guard(raw_spin_rq_lock_irqsave, rq) {
 
-	is_active = dl_se->my_q->rt.rt_nr_running > 0;
+	is_active = dl_se->dl_runtime > 0 && dl_se->my_q->rt.rt_nr_running > 0;
 
 	update_rq_clock(rq);
 	dl_server_stop(dl_se);
@@ -488,7 +491,6 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	if (is_active)
 		dl_server_start(dl_se);
-
 	}
 
 	update_parent_bw(tg, cpu, rt_runtime, old_runtime);
@@ -668,13 +670,36 @@ static inline int is_leftmost(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq
 
 static void init_dl_rq_bw_ratio(struct dl_rq *dl_rq);
 
-void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
+int init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
 {
-	raw_spin_lock_init(&dl_b->dl_runtime_lock);
-	dl_b->dl_period = period;
-	dl_b->dl_runtime = runtime;
+	u64 *runtimes __free(kfree) = NULL;
+	u64 *periods __free(kfree) = NULL;
+	int i;
+
+	runtimes = kcalloc(nr_cpu_ids, sizeof(u64), GFP_KERNEL);
+	if (!runtimes)
+		return 0;
+
+	periods = kcalloc(nr_cpu_ids, sizeof(u64), GFP_KERNEL);
+	if (!periods)
+		return 0;
+
+	raw_spin_lock_init(&dl_b->dl_bandwidth_lock);
+	dl_b->has_runtime = false;
+	dl_b->runtimes = no_free_ptr(runtimes);
+	dl_b->periods = no_free_ptr(periods);
+	for_each_possible_cpu(i) {
+		dl_b->runtimes[i] = runtime;
+		dl_b->periods[i] = period;
+	}
+
+	return 1;
 }
 
+void free_dl_bandwidth(struct dl_bandwidth *dl_b) {
+	kfree(dl_b->runtimes);
+	kfree(dl_b->periods);
+}
 
 void init_dl_bw(struct dl_bw *dl_b)
 {

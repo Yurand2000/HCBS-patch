@@ -314,9 +314,10 @@ struct rt_prio_array {
 };
 
 struct dl_bandwidth {
-	raw_spinlock_t          dl_runtime_lock;
-	u64                     dl_runtime;
-	u64                     dl_period;
+	raw_spinlock_t	dl_bandwidth_lock;
+	bool		has_runtime;
+	u64*		runtimes;
+	u64*		periods;
 };
 
 
@@ -592,12 +593,14 @@ extern void start_cfs_bandwidth(struct cfs_bandwidth *cfs_b);
 extern void unthrottle_cfs_rq(struct cfs_rq *cfs_rq);
 extern bool cfs_task_bw_constrained(struct task_struct *p);
 
-extern int sched_group_set_rt_runtime(struct task_group *tg, long *rt_runtimes,
+extern int sched_group_set_rt_runtime(struct task_group *tg, const long *rt_runtimes,
 				      size_t size);
-extern int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us);
+extern int sched_group_set_rt_period(struct task_group *tg, const long *rt_periods,
+				     size_t size);
 extern int sched_group_rt_runtime(struct task_group *tg, long *rt_runtimes,
 				  size_t size);
-extern long sched_group_rt_period(struct task_group *tg);
+extern int sched_group_rt_period(struct task_group *tg, long *rt_periods,
+				 size_t size);
 extern int sched_rt_can_attach(struct task_group *tg);
 
 extern struct task_group *sched_create_group(struct task_group *parent);
@@ -2010,6 +2013,10 @@ static inline struct rq *_this_rq_lock_irq(struct rq_flags *rf) __acquires_ret
 DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irq, struct rq,
 		    raw_spin_rq_lock_irq(_T->lock),
 		    raw_spin_rq_unlock_irq(_T->lock))
+DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irqsave, struct rq,
+		    raw_spin_rq_lock_irqsave(_T->lock, _T->flags),
+		    raw_spin_rq_unlock_irqrestore(_T->lock, _T->flags),
+		    unsigned long flags)
 
 extern struct mutex sched_rt_handler_mutex;
 extern void sched_rt_handler_mutex_lock(void);
@@ -2898,7 +2905,8 @@ extern void resched_curr(struct rq *rq);
 extern void resched_curr_lazy(struct rq *rq);
 extern void resched_cpu(int cpu);
 
-void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime);
+int init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime);
+void free_dl_bandwidth(struct dl_bandwidth *dl_b);
 extern void init_dl_entity(struct sched_dl_entity *dl_se);
 
 extern void init_cfs_throttle_work(struct task_struct *p);

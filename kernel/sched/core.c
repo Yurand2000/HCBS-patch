@@ -8671,8 +8671,8 @@ void __init sched_init(void)
 	init_defrootdomain();
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	init_dl_bandwidth(&root_task_group.dl_bandwidth,
-			  global_rt_period(), 0);
+	WARN_ON(!init_dl_bandwidth(&root_task_group.dl_bandwidth,
+				   global_rt_period(), 0));
 #endif /* CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -9899,80 +9899,123 @@ static int cpu_burst_write_u64(struct cgroup_subsys_state *css,
 #endif /* CONFIG_GROUP_SCHED_BANDWIDTH */
 
 #ifdef CONFIG_RT_GROUP_SCHED
-static ssize_t cpu_rt_runtime_write(struct kernfs_open_file *of, char *buf,
-				    size_t nbytes, loff_t off)
+static int cpu_rt_parse_times(char *buf, long *times_us)
 {
-	struct cgroup_subsys_state *css = of_css(of);
-	long *rt_runtimes __free(kfree) = NULL;
-	cpumask_t updated_cpus_mask;
+	cpumask_t cpu_mask;
 	char *val_s, *cpu_s;
+	long time_us;
 	int i, err;
-	long rt_runtime;
 
-	rt_runtimes = kcalloc(num_possible_cpus(), sizeof(long), GFP_KERNEL);
-	if (!rt_runtimes)
-		return -ENOMEM;
-
-	/* Read and parse the runtime to assign to the CPUs */
 	val_s = strsep(&buf, " ");
 	if (!val_s)
 		return -EINVAL;
 
-	err = kstrtol(val_s, 0, &rt_runtime);
+	err = kstrtol(val_s, 0, &time_us);
 	if (err)
 		return err;
 
 	/*
-	 * Read the optional list of CPUs to apply the runtime to. The list is
+	 * Read the optional list of CPUs to apply the time to. The list is
 	 * optional to follow the original RT_GROUP_SCHED interface, as it will
-	 * apply the runtime to all CPUs if not list is given.
+	 * apply the time to all CPUs if not list is given.
 	 */
 	cpu_s = strsep(&buf, " ");
-	if (cpu_s) {
-		err = cpulist_parse(cpu_s, &updated_cpus_mask);
-		if (err)
-			return err;
+	if (!cpu_s) {
+		for_each_possible_cpu(i) {
+			times_us[i] = time_us;
+		}
 
-		err = sched_group_rt_runtime(css_tg(css), rt_runtimes,
-					     num_possible_cpus());
-		if (err)
-			return err;
+		return 0;
 	} else {
-		cpumask_copy(&updated_cpus_mask, cpu_possible_mask);
+		err = cpulist_parse(cpu_s, &cpu_mask);
+		if (err)
+			return err;
+
+		/* Update the times array */
+		for_each_cpu(i, &cpu_mask) {
+			times_us[i] = time_us;
+		}
 	}
 
-	for_each_cpu(i, &updated_cpus_mask) {
-		rt_runtimes[i] = rt_runtime;
-	}
+	/* Read the optional list specifiers that follow */
+	for (;;) {
+		/* Read the time */
+		val_s = strsep(&buf, " ");
+		if (!val_s)
+			return 0;
 
-	err = sched_group_set_rt_runtime(css_tg(css), rt_runtimes,
-					 num_possible_cpus());
+		err = kstrtol(val_s, 0, &time_us);
+		if (err)
+			return err;
+
+		/* Read the CPU list */
+		cpu_s = strsep(&buf, " ");
+		if (!cpu_s)
+			return -EINVAL;
+
+		err = cpulist_parse(cpu_s, &cpu_mask);
+		if (err)
+			return err;
+
+		/* Update the times array */
+		for_each_cpu(i, &cpu_mask) {
+			times_us[i] = time_us;
+		}
+	}
+}
+
+static ssize_t cpu_rt_runtime_write(struct kernfs_open_file *of, char *buf,
+				    size_t nbytes, loff_t off)
+{
+	struct cgroup_subsys_state *css = of_css(of);
+	long *runtimes_us __free(kfree) = NULL;
+	int err;
+
+	runtimes_us = kcalloc(nr_cpu_ids, sizeof(long), GFP_KERNEL);
+	if (!runtimes_us)
+		return -ENOMEM;
+
+	err = cpu_rt_parse_times(buf, runtimes_us);
+	if (err)
+		return err;
+
+	err = sched_group_set_rt_runtime(css_tg(css), runtimes_us, nr_cpu_ids);
 	if (err)
 		return err;
 
 	return nbytes;
 }
 
-static int cpu_rt_runtime_read(struct seq_file *sf, void *v)
+static ssize_t cpu_rt_period_write(struct kernfs_open_file *of, char *buf,
+			           size_t nbytes, loff_t off)
 {
-	struct cgroup_subsys_state *css = seq_css(sf);
-	long *rt_runtimes __free(kfree) = NULL;
-	bool runtimes_equal;
-	int i, ret;
+	struct cgroup_subsys_state *css = of_css(of);
+	long *periods_us __free(kfree) = NULL;
+	int err;
 
-	rt_runtimes = kcalloc(num_possible_cpus(), sizeof(long), GFP_KERNEL);
-	if (!rt_runtimes)
+	periods_us = kcalloc(nr_cpu_ids, sizeof(long), GFP_KERNEL);
+	if (!periods_us)
 		return -ENOMEM;
 
-	ret = sched_group_rt_runtime(css_tg(css), rt_runtimes,
-				     num_possible_cpus());
-	if (ret)
-		return ret;
+	err = cpu_rt_parse_times(buf, periods_us);
+	if (err)
+		return err;
 
-	runtimes_equal = true;
+	err = sched_group_set_rt_period(css_tg(css), periods_us, nr_cpu_ids);
+	if (err)
+		return err;
+
+	return nbytes;
+}
+
+static void cpu_rt_print_times(struct seq_file *sf, const long *times_us)
+{
+	bool times_equal = true;
+	int i;
+
 	for_each_possible_cpu(i) {
-		if (rt_runtimes[0] != rt_runtimes[i]) {
-			runtimes_equal = false;
+		if (times_us[0] != times_us[i]) {
+			times_equal = false;
 			break;
 		}
 	}
@@ -9982,29 +10025,56 @@ static int cpu_rt_runtime_read(struct seq_file *sf, void *v)
 	 * RT_GROUP_SCHED, i.e. just print a single value for all the CPUs.
 	 * Otherwise, print a list of values.
 	 */
-	if (runtimes_equal) {
-		seq_printf(sf, "%ld\n", rt_runtimes[0]);
+	if (times_equal) {
+		seq_printf(sf, "%ld\n", times_us[0]);
 	} else {
-		for_each_possible_cpu(i) {
-			seq_printf(sf, "%ld ", rt_runtimes[i]);
+		seq_printf(sf, "%ld", times_us[0]);
+
+		i = cpumask_next(0, cpu_possible_mask);
+		for_each_cpu_from(i, cpu_possible_mask) {
+			seq_printf(sf, " %ld", times_us[i]);
 		}
 
-		seq_puts(sf, "\n");
+		seq_putc(sf, '\n');
 	}
+}
+
+static int cpu_rt_runtime_read(struct seq_file *sf, void *v)
+{
+	struct cgroup_subsys_state *css = seq_css(sf);
+	long *runtimes_us __free(kfree) = NULL;
+	int err;
+
+	runtimes_us = kcalloc(nr_cpu_ids, sizeof(long), GFP_KERNEL);
+	if (!runtimes_us)
+		return -ENOMEM;
+
+	err = sched_group_rt_runtime(css_tg(css), runtimes_us, nr_cpu_ids);
+	if (err)
+		return err;
+
+	cpu_rt_print_times(sf, runtimes_us);
 
 	return 0;
 }
 
-static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
-				    struct cftype *cftype, u64 rt_period_us)
+static int cpu_rt_period_read(struct seq_file *sf, void *v)
 {
-	return sched_group_set_rt_period(css_tg(css), rt_period_us);
-}
+	struct cgroup_subsys_state *css = seq_css(sf);
+	long *periods_us __free(kfree) = NULL;
+	int err;
 
-static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
-				   struct cftype *cft)
-{
-	return sched_group_rt_period(css_tg(css));
+	periods_us = kcalloc(nr_cpu_ids, sizeof(long), GFP_KERNEL);
+	if (!periods_us)
+		return -ENOMEM;
+
+	err = sched_group_rt_period(css_tg(css), periods_us, nr_cpu_ids);
+	if (err)
+		return err;
+
+	cpu_rt_print_times(sf, periods_us);
+
+	return 0;
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
@@ -10330,8 +10400,8 @@ static struct cftype cpu_files[] = {
 	},
 	{
 		.name = "rt_period_us",
-		.read_u64 = cpu_rt_period_read_uint,
-		.write_u64 = cpu_rt_period_write_uint,
+		.seq_show = cpu_rt_period_read,
+		.write = cpu_rt_period_write,
 	},
 #endif /* CONFIG_RT_GROUP_SCHED */
 	{ }	/* terminate */
