@@ -191,6 +191,9 @@ static int __alloc_rt_sched_group_data(struct task_group *tg) {
 	struct rq *s_rq __free(kfree) = NULL;
 	int i;
 
+	if (!init_dl_bandwidth(&tg->dl_bandwidth, 0, 0))
+		return 0;
+
 	tg_rt_rq = kcalloc(nr_cpu_ids, sizeof(struct rt_rq *), GFP_KERNEL);
 	if (!tg_rt_rq)
 		return 0;
@@ -230,15 +233,9 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 	if (!rt_group_sched_enabled())
 		return 1;
 
-	/* Fails on no memory, so execute before allocating group resources. */
-	if (init_dl_bandwidth(&tg->dl_bandwidth, 0, 0))
-		return 0;
-
 	/* Allocate all necessary resources beforehand */
-	if (!__alloc_rt_sched_group_data(tg)) {
-		free_dl_bandwidth(&tg->dl_bandwidth);
+	if (!__alloc_rt_sched_group_data(tg))
 		return 0;
-	}
 
 	/* Initialize the allocated resources now. */
 	for_each_possible_cpu(i) {
@@ -2955,18 +2952,15 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg)
 {
-	bool has_runtime;
-
 	/* Allow executing in the root cgroup regardless of allowed bandwidth */
 	if (tg == &root_task_group)
 		return 1;
 
 	/* Don't accept real-time tasks when there is no way for them to run */
 	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
-		has_runtime = tg->dl_bandwidth.has_runtime;
+		if (!tg->dl_bandwidth.has_runtime)
+			return 0;
 	}
-	if (rt_group_sched_enabled() && !has_runtime)
-		return 0;
 
 	/* tasks can be attached only if the taskgroup has no live children. */
 	return (int)is_live_sched_group(tg);

@@ -8671,7 +8671,7 @@ void __init sched_init(void)
 	init_defrootdomain();
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	WARN_ON(init_dl_bandwidth(&root_task_group.dl_bandwidth,
+	WARN_ON(!init_dl_bandwidth(&root_task_group.dl_bandwidth,
 				  global_rt_period(), 0));
 #endif /* CONFIG_RT_GROUP_SCHED */
 

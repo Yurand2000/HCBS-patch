@@ -395,7 +395,7 @@ bool is_live_sched_group(struct task_group *tg)
 
 	/* if there are no children, this is a leaf group, thus it is live */
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		guard(raw_spinlock)(&tg->dl_bandwidth.dl_bandwidth_lock);
+		guard(raw_spinlock)(&child->dl_bandwidth.dl_bandwidth_lock);
 		if (child->dl_bandwidth.has_runtime)
 			is_active = 0;
 	}
@@ -408,7 +408,7 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 	bool has_active_siblings = 0;
 
 	list_for_each_entry_rcu(child, &tg->parent->children, siblings) {
-		guard(raw_spinlock)(&tg->dl_bandwidth.dl_bandwidth_lock);
+		guard(raw_spinlock)(&child->dl_bandwidth.dl_bandwidth_lock);
 		if (child != tg && child->dl_bandwidth.has_runtime)
 			has_active_siblings = 1;
 	}
@@ -470,7 +470,7 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	scoped_guard(raw_spin_rq_lock_irq, rq) {
 
-	is_active = dl_se->my_q->rt.rt_nr_running > 0;
+	is_active = dl_se->dl_runtime > 0 && dl_se->my_q->rt.rt_nr_running > 0;
 
 	update_rq_clock(rq);
 	dl_server_stop(dl_se);
@@ -492,7 +492,6 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	if (is_active)
 		dl_server_start(dl_se);
-
 	}
 
 	update_parent_bw(tg, cpu, rt_runtime, old_runtime);
@@ -680,11 +679,11 @@ int init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
 
 	runtimes = kcalloc(nr_cpu_ids, sizeof(u64), GFP_KERNEL);
 	if (!runtimes)
-		return -ENOMEM;
+		return 0;
 
 	periods = kcalloc(nr_cpu_ids, sizeof(u64), GFP_KERNEL);
 	if (!periods)
-		return -ENOMEM;
+		return 0;
 
 	raw_spin_lock_init(&dl_b->dl_bandwidth_lock);
 	dl_b->has_runtime = false;
@@ -695,7 +694,7 @@ int init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
 		dl_b->periods[i] = period;
 	}
 
-	return 0;
+	return 1;
 }
 
 void free_dl_bandwidth(struct dl_bandwidth *dl_b) {
