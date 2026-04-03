@@ -2713,8 +2713,6 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 			printk("tg_rt_schedulable fail: dl check tg");
 			return -EBUSY;
 		}
-
-		return 0;
 	}
 
 	for_each_possible_cpu(i) {

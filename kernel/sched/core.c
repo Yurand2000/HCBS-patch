@@ -9927,7 +9927,14 @@ static int cpu_rt_parse_times(char *buf, long *times_us)
 
 		return 0;
 	} else {
-		goto parse_first_cpulist;
+		err = cpulist_parse(cpu_s, &cpu_mask);
+		if (err)
+			return err;
+
+		/* Update the times array */
+		for_each_cpu(i, &cpu_mask) {
+			times_us[i] = time_us;
+		}
 	}
 
 	/* Read the optional list specifiers that follow */
@@ -9946,7 +9953,6 @@ static int cpu_rt_parse_times(char *buf, long *times_us)
 		if (!cpu_s)
 			return -EINVAL;
 
-parse_first_cpulist:
 		err = cpulist_parse(cpu_s, &cpu_mask);
 		if (err)
 			return err;
