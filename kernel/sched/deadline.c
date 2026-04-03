@@ -426,6 +426,7 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64 old_runtime)
 {
 	int i, other_cpus_active;
+	bool has_live_siblings;
 
 	if (tg->parent == NULL || tg->parent == &root_task_group)
 		return;
@@ -444,16 +445,18 @@ static void update_parent_bw(struct task_group *tg, int cpu, u64 rt_runtime, u64
 	if (other_cpus_active)
 		return;
 
-	if (rt_runtime == 0 && old_runtime != 0 &&
-	    !sched_group_has_live_siblings(tg)) {
+	rcu_read_lock();
+	has_live_siblings = sched_group_has_live_siblings(tg);
+	rcu_read_unlock();
+
+	if (rt_runtime == 0 && old_runtime != 0 && !has_live_siblings) {
 		for_each_online_cpu(i) {
-			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			guard(raw_spin_rq_lock_irqsave)(cpu_rq(i));
 			__add_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
 		}
-	} else if (rt_runtime != 0 && old_runtime == 0 &&
-		   !sched_group_has_live_siblings(tg)) {
+	} else if (rt_runtime != 0 && old_runtime == 0 && !has_live_siblings) {
 		for_each_online_cpu(i) {
-			guard(raw_spin_rq_lock_irq)(cpu_rq(i));
+			guard(raw_spin_rq_lock_irqsave)(cpu_rq(i));
 			__sub_rq_bw(tg->parent->dl_se[i]->dl_bw, tg->dl_se[i]->dl_rq);
 		}
 	}
@@ -466,9 +469,11 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 	int is_active, is_live_group;
 	u64 old_runtime, new_bw;
 
+	rcu_read_lock();
 	is_live_group = is_live_sched_group(tg);
+	rcu_read_unlock();
 
-	scoped_guard(raw_spin_rq_lock_irq, rq) {
+	scoped_guard(raw_spin_rq_lock_irqsave, rq) {
 
 	is_active = dl_se->dl_runtime > 0 && dl_se->my_q->rt.rt_nr_running > 0;
 

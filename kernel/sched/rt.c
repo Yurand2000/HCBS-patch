@@ -2266,9 +2266,9 @@ static void group_push_rt_tasks_callback(struct rq *global_rq)
 	BUG_ON(global_rq->rq_to_push_from == NULL);
 	BUG_ON(served_rq_of_rt_rq(rt_rq) == global_rq);
 
-	if ((rt_rq->rt_nr_running > 1) ||
-	    (dl_group_of(rt_rq)->dl_throttled == 1) ||
-	    (dl_group_of(rt_rq)->dl_runtime == 0)) {
+	if (rt_rq->rt_nr_running > 1 ||
+	    dl_group_of(rt_rq)->dl_throttled ||
+	    !dl_group_of(rt_rq)->dl_runtime) {
 
 		group_push_rt_tasks(rt_rq);
 	}
@@ -2406,7 +2406,7 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 		if (!is_dl_group(rt_rq) && p->nr_cpus_allowed > 1 && rq->rt.overloaded)
 			rt_queue_push_tasks(rt_rq);
 		else if (is_dl_group(rt_rq) &&
-			 (rt_rq->overloaded || dl_group_of(rt_rq)->dl_runtime == 0))
+			 (rt_rq->overloaded || !dl_group_of(rt_rq)->dl_runtime))
 			rt_queue_push_from_group(rt_rq);
 
 		if (p->prio < rq->donor->prio && cpu_online(cpu_of(rq)))
@@ -2822,7 +2822,7 @@ static int tg_set_rt_bandwidth(struct task_group *tg, u64* periods,
 		return err;
 	}
 
-	scoped_guard(raw_spinlock_irq, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		tg->dl_bandwidth.has_runtime = has_runtime;
 		memcpy(tg->dl_bandwidth.periods, periods, sizeof(u64) * nr_cpu_ids);
 		memcpy(tg->dl_bandwidth.runtimes, runtimes, sizeof(u64) * nr_cpu_ids);
@@ -2856,7 +2856,7 @@ int sched_group_set_rt_runtime(struct task_group *tg, const long *runtimes_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	scoped_guard(raw_spinlock_irq, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_periods, tg->dl_bandwidth.periods, nr_cpu_ids * sizeof(u64));
 	}
 	for_each_possible_cpu(i) {
@@ -2880,7 +2880,7 @@ int sched_group_rt_runtime(struct task_group *tg, long *runtimes_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		if (tg->dl_bandwidth.runtimes[i] == RUNTIME_INF)
 			runtimes_us[i] = -1;
@@ -2911,7 +2911,7 @@ int sched_group_set_rt_period(struct task_group *tg, const long *periods_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	scoped_guard(raw_spinlock_irq, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_runtimes, tg->dl_bandwidth.runtimes, nr_cpu_ids * sizeof(u64));
 	}
 	for_each_possible_cpu(i) {
@@ -2934,7 +2934,7 @@ int sched_group_rt_period(struct task_group *tg, long *periods_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		periods_us[i] = tg->dl_bandwidth.periods[i];
 		do_div(periods_us[i], NSEC_PER_USEC);

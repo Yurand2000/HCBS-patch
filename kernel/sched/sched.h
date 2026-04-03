@@ -2016,6 +2016,10 @@ static inline struct rq *_this_rq_lock_irq(struct rq_flags *rf) __acquires_ret
 DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irq, struct rq,
 		    raw_spin_rq_lock_irq(_T->lock),
 		    raw_spin_rq_unlock_irq(_T->lock))
+DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irqsave, struct rq,
+		    raw_spin_rq_lock_irqsave(_T->lock, _T->flags),
+		    raw_spin_rq_unlock_irqrestore(_T->lock, _T->flags),
+		    unsigned long flags)
 
 #ifdef CONFIG_NUMA
 
