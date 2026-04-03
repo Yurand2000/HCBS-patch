@@ -2630,7 +2630,8 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
-	if (dl_bandwidth_enabled() && !runtime && tg_has_rt_tasks(tg))
+	if (dl_bandwidth_enabled() && tg != &root_task_group &&
+	    !runtime && tg_has_rt_tasks(tg))
 		return -EBUSY;
 
 	if (WARN_ON(!rt_group_sched_enabled() && tg != &root_task_group))
@@ -2713,10 +2714,6 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	 */
 	if (rt_runtime && tg != &root_task_group &&
 		tg->parent != &root_task_group && tg_has_rt_tasks(tg->parent))
-		return -EINVAL;
-
-	/* No period doesn't make any sense. */
-	if (rt_period == 0)
 		return -EINVAL;
 
 	/*
