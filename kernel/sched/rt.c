@@ -2152,10 +2152,6 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	if (tg == &root_task_group && rt_runtime == 0)
 		return -EINVAL;
 
-	/* No period doesn't make any sense. */
-	if (rt_period == 0)
-		return -EINVAL;
-
 	/*
 	 * Bound quota to defend quota against overflow during bandwidth shift.
 	 */
