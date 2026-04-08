@@ -1919,30 +1919,28 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 	if (!cpumask_test_cpu(this_cpu, &lowest_mask))
 		this_cpu = -1; /* Skip this_cpu opt if not among lowest */
 
-	rcu_read_lock();
-	for_each_domain(cpu, sd) {
-		if (sd->flags & SD_WAKE_AFFINE) {
-			int best_cpu;
+	scoped_guard(rcu) {
+		for_each_domain(cpu, sd) {
+			if (sd->flags & SD_WAKE_AFFINE) {
+				int best_cpu;
 
-			/*
-			 * "this_cpu" is cheaper to preempt than a
-			 * remote processor.
-			 */
-			if (this_cpu != -1 &&
-			    cpumask_test_cpu(this_cpu, sched_domain_span(sd))) {
-				rcu_read_unlock();
-				return this_cpu;
-			}
+				/*
+				* "this_cpu" is cheaper to preempt than a
+				* remote processor.
+				*/
+				if (this_cpu != -1 &&
+				    cpumask_test_cpu(this_cpu, sched_domain_span(sd))) {
+					return this_cpu;
+				}
 
-			best_cpu = cpumask_any_and_distribute(&lowest_mask,
-							      sched_domain_span(sd));
-			if (best_cpu < nr_cpu_ids) {
-				rcu_read_unlock();
-				return best_cpu;
+				best_cpu = cpumask_any_and_distribute(&lowest_mask,
+								      sched_domain_span(sd));
+				if (best_cpu < nr_cpu_ids) {
+					return best_cpu;
+				}
 			}
 		}
 	}
-	rcu_read_unlock();
 
 	/*
 	 * And finally, if there were no matches within the domains
@@ -2626,9 +2624,7 @@ static inline bool tg_has_runtime(u64 *runtimes)
 	int i;
 
 	for_each_online_cpu(i) {
-		if (runtimes[i] == RUNTIME_INF)
-			return true;
-		else if (runtimes[i] > 0)
+		if (runtimes[i] == RUNTIME_INF || runtimes[i] > 0)
 			return true;
 	}
 
@@ -2677,8 +2673,8 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
-	if (dl_bandwidth_enabled() && tg != &root_task_group &&
-	    !has_runtime && tg_has_rt_tasks(tg)) {
+	if (dl_bandwidth_enabled() && !has_runtime &&
+	    tg != &root_task_group && tg_has_rt_tasks(tg)) {
 		printk("tg_rt_schedulable fail: will starve");
 		return -EBUSY;
 	}
@@ -2735,7 +2731,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 		}
 
 		if (sum > total) {
-			printk("tg_rt_schedulable fail: children bw > parent bw");
+			printk("tg_rt_schedulable fail at %d: children bw %lu > parent bw %lu", i, sum, total);
 			return -EINVAL;
 		}
 	}
@@ -2746,7 +2742,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 static int __rt_schedulable(struct task_group *tg, u64* periods, u64 *runtimes,
 	                    bool has_runtime)
 {
-	int i, ret;
+	int i;
 
 	struct rt_schedulable_data data = {
 		.tg = tg,
@@ -2776,11 +2772,8 @@ static int __rt_schedulable(struct task_group *tg, u64* periods, u64 *runtimes,
 		return -EBUSY;
 	}
 
-	rcu_read_lock();
-	ret = walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
-	rcu_read_unlock();
-
-	return ret;
+	guard(rcu)();
+	return walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
 }
 
 static int tg_set_rt_bandwidth(struct task_group *tg, u64* periods,
@@ -2854,17 +2847,18 @@ int sched_group_set_rt_runtime(struct task_group *tg, const long *runtimes_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_periods, tg->dl_bandwidth.periods, nr_cpu_ids * sizeof(u64));
-	}
+	// }
 	for_each_possible_cpu(i) {
-		rt_runtimes[i] = (u64)runtimes_us[i] * NSEC_PER_USEC;
-		if (rt_runtimes[i] < 0)
+		if (runtimes_us[i] < 0)
 			rt_runtimes[i] = RUNTIME_INF;
 		else if ((u64)runtimes_us[i] > U64_MAX / NSEC_PER_USEC) {
 			printk("Set Runtime Fail: runtime[%d] > max_runtime", i);
 			return -EINVAL;
 		}
+		else
+			rt_runtimes[i] = (u64)runtimes_us[i] * NSEC_PER_USEC;
 	}
 
 	return tg_set_rt_bandwidth(tg, rt_periods, rt_runtimes);
@@ -2878,7 +2872,7 @@ int sched_group_rt_runtime(struct task_group *tg, long *runtimes_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	// guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		if (tg->dl_bandwidth.runtimes[i] == RUNTIME_INF)
 			runtimes_us[i] = -1;
@@ -2909,9 +2903,9 @@ int sched_group_set_rt_period(struct task_group *tg, const long *periods_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_runtimes, tg->dl_bandwidth.runtimes, nr_cpu_ids * sizeof(u64));
-	}
+	// }
 	for_each_possible_cpu(i) {
 		if (periods_us[i] > U64_MAX / NSEC_PER_USEC) {
 			printk("Set Period Fail: period[%d] > max_period", i);
@@ -2932,7 +2926,7 @@ int sched_group_rt_period(struct task_group *tg, long *periods_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	// guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		periods_us[i] = tg->dl_bandwidth.periods[i];
 		do_div(periods_us[i], NSEC_PER_USEC);
@@ -2955,12 +2949,13 @@ int sched_rt_can_attach(struct task_group *tg)
 		return 1;
 
 	/* Don't accept real-time tasks when there is no way for them to run */
-	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		if (!tg->dl_bandwidth.has_runtime)
 			return 0;
-	}
+	// }
 
 	/* tasks can be attached only if the taskgroup has no live children. */
+	guard(rcu)();
 	return (int)is_live_sched_group(tg);
 }
 
