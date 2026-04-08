@@ -915,12 +915,15 @@ select_task_rq_rt(struct task_struct *p, int cpu, int flags)
 {
 	struct task_struct *curr, *donor;
 	struct rq *rq;
+	int new_cpu;
 	bool test;
 
 	/* Just return the task_cpu for processes inside task groups */
 	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
 	    is_dl_group(rt_rq_of_se(&p->rt))) {
-		cpu = group_find_lowest_rt_rq(p, rt_rq_of_se(&p->rt));
+		new_cpu = group_find_lowest_rt_rq(p, rt_rq_of_se(&p->rt));
+		if (new_cpu != -1)
+			cpu = new_cpu;
 
 		goto out;
 	}
