@@ -2850,9 +2850,9 @@ int sched_group_set_rt_runtime(struct task_group *tg, const long *runtimes_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_periods, tg->dl_bandwidth.periods, nr_cpu_ids * sizeof(u64));
-	// }
+	}
 	for_each_possible_cpu(i) {
 		if (runtimes_us[i] < 0)
 			rt_runtimes[i] = RUNTIME_INF;
@@ -2875,7 +2875,7 @@ int sched_group_rt_runtime(struct task_group *tg, long *runtimes_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	// guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		if (tg->dl_bandwidth.runtimes[i] == RUNTIME_INF)
 			runtimes_us[i] = -1;
@@ -2906,9 +2906,9 @@ int sched_group_set_rt_period(struct task_group *tg, const long *periods_us,
 	if (!rt_periods)
 		return -ENOMEM;
 
-	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		memcpy(rt_runtimes, tg->dl_bandwidth.runtimes, nr_cpu_ids * sizeof(u64));
-	// }
+	}
 	for_each_possible_cpu(i) {
 		if (periods_us[i] > U64_MAX / NSEC_PER_USEC) {
 			printk("Set Period Fail: period[%d] > max_period", i);
@@ -2929,7 +2929,7 @@ int sched_group_rt_period(struct task_group *tg, long *periods_us,
 	if (size < nr_cpu_ids)
 		return -ENOSPC;
 
-	// guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_bandwidth_lock);
 	for_each_possible_cpu(i) {
 		periods_us[i] = tg->dl_bandwidth.periods[i];
 		do_div(periods_us[i], NSEC_PER_USEC);
@@ -2952,10 +2952,10 @@ int sched_rt_can_attach(struct task_group *tg)
 		return 1;
 
 	/* Don't accept real-time tasks when there is no way for them to run */
-	// scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_bandwidth_lock) {
 		if (!tg->dl_bandwidth.has_runtime)
 			return 0;
-	// }
+	}
 
 	/* tasks can be attached only if the taskgroup has no live children. */
 	guard(rcu)();

@@ -208,10 +208,10 @@ __dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
 	u64 dl_groups_root = 0;
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	// scoped_guard(raw_spinlock_irqsave, &root_task_group.dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &root_task_group.dl_bandwidth.dl_bandwidth_lock) {
 		dl_groups_root = to_ratio(root_task_group.dl_bandwidth.periods[0],
 					  root_task_group.dl_bandwidth.runtimes[0]);
-	// }
+	}
 #endif
 	return dl_b->bw != -1 &&
 	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
@@ -394,7 +394,7 @@ bool is_live_sched_group(struct task_group *tg)
 
 	/* if there are no children, this is a leaf group, thus it is live */
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		// guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
+		guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
 		if (child->dl_bandwidth.has_runtime)
 			is_active = 0;
 	}
@@ -407,7 +407,7 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 	bool has_active_siblings = 0;
 
 	list_for_each_entry_rcu(child, &tg->parent->children, siblings) {
-		// guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
+		guard(raw_spinlock_irqsave)(&child->dl_bandwidth.dl_bandwidth_lock);
 		if (child != tg && child->dl_bandwidth.has_runtime)
 			has_active_siblings = 1;
 	}
@@ -3633,11 +3633,10 @@ int sched_dl_global_validate(void)
 	unsigned long flags;
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	// scoped_guard(raw_spinlock_irqsave, &root_task_group.dl_bandwidth.dl_bandwidth_lock) {
+	scoped_guard(raw_spinlock_irqsave, &root_task_group.dl_bandwidth.dl_bandwidth_lock) {
 		dl_groups_root = to_ratio(root_task_group.dl_bandwidth.periods[0],
 					  root_task_group.dl_bandwidth.runtimes[0]);
-		// do_div(dl_groups_root, num_online_cpus());
-	// }
+	}
 #endif
 
 	/*
