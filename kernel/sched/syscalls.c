@@ -445,6 +445,15 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 	if (rt_policy(policy)) {
 		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
 
+		/* Allow changing to the rt policy when not in the root cgroup*/
+		if (rt_group_sched_enabled() &&
+		    p->sched_task_group != &root_task_group) {
+		    if(attr->sched_priority > rlim_rtprio)
+				goto req_priv;
+			else
+				return 0;
+		}
+
 		/* Can't set/change the rt policy: */
 		if (policy != p->policy && !rlim_rtprio)
 			goto req_priv;
