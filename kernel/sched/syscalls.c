@@ -445,6 +445,15 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 	if (rt_policy(policy)) {
 		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
 
+		/* Allow changing to the rt policy when not in the root cgroup*/
+		if (rt_group_sched_enabled() &&
+		    p->sched_task_group != &root_task_group) {
+		    if(attr->sched_priority > rlim_rtprio)
+				goto req_priv;
+			else
+				return 0;
+		}
+
 		/* Can't set/change the rt policy: */
 		if (policy != p->policy && !rlim_rtprio)
 			goto req_priv;
@@ -606,7 +615,6 @@ recheck:
 change:
 
 	if (user) {
-#ifdef CONFIG_RT_GROUP_SCHED
 		/*
 		 * Do not allow real-time tasks into groups that have no runtime
 		 * assigned.
@@ -618,7 +626,7 @@ change:
 			retval = -EPERM;
 			goto unlock;
 		}
-#endif
+
 		if (dl_bandwidth_enabled() && dl_policy(policy) &&
 				!(attr->sched_flags & SCHED_FLAG_SUGOV)) {
 			cpumask_t *span = rq->rd->span;
