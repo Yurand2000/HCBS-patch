@@ -359,6 +359,9 @@ static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 }
 
 #ifdef CONFIG_RT_GROUP_SCHED
+static void group_push_rt_tasks(struct rt_rq *);
+static void group_pull_rt_task(struct rt_rq *);
+
 static DEFINE_PER_CPU(struct balance_callback, rt_group_push_head);
 static DEFINE_PER_CPU(struct balance_callback, rt_group_pull_head);
 static void group_push_rt_tasks_callback(struct rq *);
@@ -1826,6 +1829,28 @@ skip:
 }
 
 #ifdef CONFIG_RT_GROUP_SCHED
+static inline int get_earliest_wakeup_rt_rq(struct task_group *tg, struct cpumask* cpu_mask)
+{
+	int cpu, earliest_cpu;
+	u64 wakeup_time, earliest_wakeup_time;
+
+	if (cpumask_empty(cpu_mask))
+			return -1;
+
+	earliest_cpu = cpumask_first(cpu_mask);
+	earliest_wakeup_time = dl_next_period(tg->dl_se[earliest_cpu]);
+
+	for_each_cpu(cpu, cpu_mask) {
+		wakeup_time = dl_next_period(tg->dl_se[cpu]);
+		if (wakeup_time < earliest_wakeup_time) {
+			earliest_wakeup_time = wakeup_time;
+			earliest_cpu = cpu;
+		}
+	}
+
+	return earliest_cpu;
+}
+
 /*
  * Find the lowest priority runqueue among the runqueues of the same
  * task group. Unlike find_lowest_rt(), this does not mean that the
@@ -1834,7 +1859,7 @@ skip:
 static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_rt_rq)
 {
 	struct sched_domain *sd;
-	struct cpumask lowest_mask;
+	struct cpumask lowest_mask, throttled_mask;
 	struct sched_dl_entity *dl_se;
 	struct rt_rq *rt_rq;
 	int prio, lowest_prio;
@@ -1847,6 +1872,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 
 	lowest_prio = task->prio - 1;
 	cpumask_clear(&lowest_mask);
+	cpumask_clear(&throttled_mask);
 	for_each_cpu_and(cpu, cpu_online_mask, task->cpus_ptr) {
 		dl_se = task_rt_rq->tg->dl_se[cpu];
 		rt_rq = &dl_se->my_q->rt;
@@ -1856,10 +1882,12 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 		 * If we're on asym system ensure we consider the different capacities
 		 * of the CPUs when searching for the lowest_mask.
 		 */
-		if (dl_se->dl_throttled || !rt_task_fits_capacity(task, cpu))
+		if (!rt_task_fits_capacity(task, cpu))
 			continue;
 
-		if (prio >= lowest_prio) {
+		if (dl_se->dl_throttled)
+			cpumask_set_cpu(cpu, &throttled_mask);
+		else if (prio >= lowest_prio) {
 			if (prio > lowest_prio) {
 				cpumask_clear(&lowest_mask);
 				lowest_prio = prio;
@@ -1870,7 +1898,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 	}
 
 	if (cpumask_empty(&lowest_mask))
-		return -1;
+		return get_earliest_wakeup_rt_rq(task_rt_rq->tg, &throttled_mask);
 
 	/*
 	 * At this point we have built a mask of CPUs representing the
@@ -1973,7 +2001,6 @@ static struct rt_rq *group_find_lock_lowest_rt_rq(struct task_struct *task, stru
 			 * check the task migration disable flag here too.
 			 */
 			if (unlikely(is_migration_disabled(task) ||
-				     lowest_dl_se->dl_throttled ||
 				     !cpumask_test_cpu(lowest_rq->cpu, &task->cpus_mask) ||
 				     task != pick_next_pushable_task(rt_rq))) {
 
