@@ -391,6 +391,7 @@ bool is_live_sched_group(struct task_group *tg)
 	bool is_active = 1;
 
 	/* if there are no children, this is a leaf group, thus it is live */
+	guard(rcu)();
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
 		if (child->dl_bandwidth.dl_runtime > 0)
 			is_active = 0;
@@ -403,6 +404,7 @@ static inline bool sched_group_has_live_siblings(struct task_group *tg)
 	struct task_group *child;
 	bool has_active_siblings = 0;
 
+	guard(rcu)();
 	list_for_each_entry_rcu(child, &tg->parent->children, siblings) {
 		if (child != tg && child->dl_bandwidth.dl_runtime > 0)
 			has_active_siblings = 1;
@@ -417,7 +419,7 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 	int is_active, is_live_group;
 	u64 old_runtime, new_bw;
 
-	is_live_group = is_live_sched_group(tg);
+	is_live_group = (int)is_live_sched_group(tg);
 
 	guard(raw_spin_rq_lock_irq)(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
