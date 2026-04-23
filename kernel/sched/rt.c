@@ -88,6 +88,21 @@ void init_rt_rq(struct rt_rq *rt_rq)
 
 void unregister_rt_sched_group(struct task_group *tg)
 {
+	int i;
+
+	if (!rt_group_sched_enabled())
+		return;
+
+	if (!tg->dl_se || !tg->rt_rq)
+		return;
+
+	for_each_possible_cpu(i) {
+		if (!tg->dl_se[i] || !tg->rt_rq[i])
+			continue;
+
+		if (tg->dl_se[i]->dl_runtime)
+			dl_init_tg(tg->dl_se[i], 0, tg->dl_se[i]->dl_period);
+	}
 }
 
 void free_rt_sched_group(struct task_group *tg)
