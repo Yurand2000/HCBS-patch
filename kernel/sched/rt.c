@@ -1854,7 +1854,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 	if (!cpumask_test_cpu(this_cpu, &lowest_mask))
 		this_cpu = -1; /* Skip this_cpu opt if not among lowest */
 
-	guard(rcu)();
+	scoped_guard(rcu) {
 	for_each_domain(cpu, sd) {
 		if (sd->flags & SD_WAKE_AFFINE) {
 			int best_cpu;
@@ -1872,6 +1872,7 @@ static int group_find_lowest_rt_rq(struct task_struct *task, struct rt_rq *task_
 			if (best_cpu < nr_cpu_ids)
 				return best_cpu;
 		}
+	}
 	}
 
 	/*
