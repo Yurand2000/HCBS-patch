@@ -2215,6 +2215,8 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
 	if (!__checkparam_dl(&attr, true))
 		return -EINVAL;
 
+	guard(sched_rt_handler)();
+	guard(sched_domains)();
 	guard(rcu)();
 	return walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
 }
@@ -2287,14 +2289,23 @@ static int sched_rt_global_validate(void)
 	return 0;
 }
 
+DEFINE_MUTEX(sched_rt_handler_mutex);
+
+void sched_rt_handler_mutex_lock() {
+	mutex_lock(&sched_rt_handler_mutex);
+}
+
+void sched_rt_handler_mutex_unlock() {
+	mutex_unlock(&sched_rt_handler_mutex);
+}
+
 static int sched_rt_handler(const struct ctl_table *table, int write, void *buffer,
 		size_t *lenp, loff_t *ppos)
 {
 	int old_period, old_runtime;
-	static DEFINE_MUTEX(mutex);
 	int ret;
 
-	mutex_lock(&mutex);
+	sched_rt_handler_mutex_lock();
 	sched_domains_mutex_lock();
 	old_period = sysctl_sched_rt_period;
 	old_runtime = sysctl_sched_rt_runtime;
@@ -2318,7 +2329,7 @@ undo:
 		sysctl_sched_rt_runtime = old_runtime;
 	}
 	sched_domains_mutex_unlock();
-	mutex_unlock(&mutex);
+	sched_rt_handler_mutex_unlock();
 
 	/*
 	 * After changing maximum available bandwidth for DEADLINE, we need to
