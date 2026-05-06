@@ -360,6 +360,9 @@ int dl_check_tg(unsigned long total)
 	struct dl_bw *dl_b;
 	u64 gen = ++dl_cookie;
 
+	lockdep_assert_held(&sched_domains_mutex);
+	lockdep_assert_held(&sched_rt_handler_mutex);
+
 	for_each_possible_cpu(which_cpu) {
 		guard(rcu_sched)();
 
@@ -3540,6 +3543,9 @@ int sched_dl_global_validate(void)
 	int cpu, cap, cpus, ret = 0;
 	unsigned long flags;
 
+	lockdep_assert_held(&sched_domains_mutex);
+	lockdep_assert_held(&sched_rt_handler_mutex);
+
 	/*
 	 * Here we want to check the bandwidth not being set to some
 	 * value smaller than the currently allocated bandwidth in
@@ -3591,6 +3597,9 @@ void sched_dl_do_global(void)
 	struct dl_bw *dl_b;
 	int cpu;
 	unsigned long flags;
+
+	lockdep_assert_held(&sched_domains_mutex);
+	lockdep_assert_held(&sched_rt_handler_mutex);
 
 	if (global_rt_runtime() != RUNTIME_INF)
 		new_bw = to_ratio(global_rt_period(), global_rt_runtime());
