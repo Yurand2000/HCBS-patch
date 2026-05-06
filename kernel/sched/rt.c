@@ -567,7 +567,7 @@ inc_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 	/*
 	 * Change rq's cpupri only if rt_rq is the top queue.
 	 */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+	if (is_dl_group(rt_rq))
 		return;
 
 	if (rq->online && prio < prev_prio)
@@ -582,7 +582,7 @@ dec_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 	/*
 	 * Change rq's cpupri only if rt_rq is the top queue.
 	 */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+	if (is_dl_group(rt_rq))
 		return;
 
 	if (rq->online && rt_rq->highest_prio.curr != prev_prio)
@@ -924,8 +924,7 @@ select_task_rq_rt(struct task_struct *p, int cpu, int flags)
 	bool test;
 
 	/* Just return the task_cpu for processes inside task groups */
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
-	    is_dl_group(rt_rq_of_se(&p->rt)))
+	if (is_dl_group(rt_rq_of_se(&p->rt)))
 		goto out;
 
 	/* For anything but wake ups, just return the task_cpu */
@@ -1027,7 +1026,7 @@ static int balance_rt(struct rq *rq, struct task_struct *p, struct rq_flags *rf)
 		 * not yet started the picking loop.
 		 */
 		rq_unpin_lock(rq, rf);
-		if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq_of_se(&p->rt)))
+		if (is_dl_group(rt_rq_of_se(&p->rt)))
 			group_pull_rt_task(rt_rq_of_se(&p->rt));
 		else
 			pull_rt_task(rq);
@@ -1143,7 +1142,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	if (rq->donor->sched_class != &rt_sched_class)
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+	if (is_dl_group(rt_rq))
 		rt_queue_push_from_group(rt_rq);
 	else
 		rt_queue_push_tasks(rt_rq);
@@ -1200,7 +1199,7 @@ static void put_prev_task_rt(struct rq *rq, struct task_struct *p, struct task_s
 	if (on_rt_rq(&p->rt) && p->nr_cpus_allowed > 1)
 		enqueue_pushable_task(rt_rq, p);
 
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
+	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (dl_se->dl_throttled)
@@ -2275,7 +2274,7 @@ static void task_woken_rt(struct rq *rq, struct task_struct *p)
 	if (!need_to_push)
 		return;
 
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+	if (is_dl_group(rt_rq))
 		group_push_rt_tasks(rt_rq);
 	else
 		push_rt_tasks(rq);
@@ -2317,7 +2316,7 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	if (!task_on_rq_queued(p) || rt_rq->rt_nr_running)
 		return;
 
-	if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+	if (is_dl_group(rt_rq))
 		rt_queue_pull_to_group(rt_rq);
 	else
 		rt_queue_pull_task(rt_rq);
@@ -2349,7 +2348,7 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	if (task_current(rq, p)) {
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
-		if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq_of_se(&p->rt))) {
+		if (is_dl_group(rt_rq_of_se(&p->rt))) {
 			struct sched_dl_entity *dl_se = dl_group_of(rt_rq_of_se(&p->rt));
 
 			p->dl_server = dl_se;
@@ -2395,7 +2394,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * may need to pull tasks to this runqueue.
 		 */
 		if (oldprio < p->prio) {
-			if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq))
+			if (is_dl_group(rt_rq))
 				rt_queue_pull_to_group(rt_rq);
 			else
 				rt_queue_pull_task(rt_rq);
