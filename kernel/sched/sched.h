@@ -2027,6 +2027,14 @@ DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irq, struct rq,
 		    raw_spin_rq_lock_irq(_T->lock),
 		    raw_spin_rq_unlock_irq(_T->lock))
 
+extern struct mutex sched_rt_handler_mutex;
+extern void sched_rt_handler_mutex_lock(void);
+extern void sched_rt_handler_mutex_unlock(void);
+
+DEFINE_LOCK_GUARD_0(sched_rt_handler,
+		    sched_rt_handler_mutex_lock(),
+		    sched_rt_handler_mutex_unlock())
+
 #ifdef CONFIG_NUMA
 
 enum numa_topology_type {
