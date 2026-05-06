@@ -2717,6 +2717,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 			return -EINVAL;
 		}
 
+		guard(sched_domains)();
 		if (!dl_check_tg(total)) {
 			printk("tg_rt_schedulable fail: dl check tg");
 			return -EBUSY;
