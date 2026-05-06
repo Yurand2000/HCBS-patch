@@ -157,7 +157,6 @@ static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct 
 		return NULL;
 
 	p = rt_task_of(pick_next_rt_entity(rt_rq));
-	set_next_task_rt(rq, p, true);
 
 	return p;
 }
