@@ -379,46 +379,12 @@ int dl_check_tg(unsigned long total)
 	return 1;
 }
 
-/*
- * A cgroup is deemed live if:
- * - It is a leaf cgroup.
- * - All it's children have zero runtime.
- */
-bool is_live_sched_group(struct task_group *tg)
-{
-	struct task_group *child;
-	bool is_active = 1;
-
-	/* if there are no children, this is a leaf group, thus it is live */
-	guard(rcu)();
-	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		if (child->dl_bandwidth.dl_runtime > 0)
-			is_active = 0;
-	}
-	return is_active;
-}
-
-static inline bool sched_group_has_live_siblings(struct task_group *tg)
-{
-	struct task_group *child;
-	bool has_active_siblings = 0;
-
-	guard(rcu)();
-	list_for_each_entry_rcu(child, &tg->parent->children, siblings) {
-		if (child != tg && child->dl_bandwidth.dl_runtime > 0)
-			has_active_siblings = 1;
-	}
-	return has_active_siblings;
-}
-
 void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 {
 	struct sched_dl_entity *dl_se = tg->dl_se[cpu];
 	struct rq *rq = container_of_const(dl_se->dl_rq, struct rq, dl);
-	int is_active, is_live_group;
+	int is_active;
 	u64 old_runtime, new_bw;
-
-	is_live_group = (int)is_live_sched_group(tg);
 
 	guard(raw_spin_rq_lock_irq)(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
@@ -428,8 +394,7 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	old_runtime = dl_se->dl_runtime;
 	new_bw = to_ratio(rt_period, rt_runtime);
-	if (is_live_group)
-		dl_rq_change_utilization(rq, dl_se, new_bw);
+	dl_rq_change_utilization(rq, dl_se, new_bw);
 
 	dl_se->dl_runtime  = rt_runtime;
 	dl_se->dl_deadline = rt_period;
@@ -440,24 +405,6 @@ void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period)
 
 	dl_se->dl_bw = new_bw;
 	dl_se->dl_density = new_bw;
-
-	/*
-	 * Handle parent bandwidth accounting when child runtime changes:
-	 * - When disabling the last child, the parent becomes a leaf group,
-	 *   and so the parent's bandwidth must be accounted back.
-	 * - When enabling the first child, the parent becomes a non-leaf group,
-	 *   and so the parent's bandwidth must be removed.
-	 * Only leaf groups (those without active children) have non-zero bandwidth.
-	 */
-	if (tg->parent && tg->parent != &root_task_group) {
-		if (rt_runtime == 0 && old_runtime != 0 &&
-		    !sched_group_has_live_siblings(tg)) {
-			__add_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		} else if (rt_runtime != 0 && old_runtime == 0 &&
-			   !sched_group_has_live_siblings(tg)) {
-			__sub_rq_bw(tg->parent->dl_se[cpu]->dl_bw, dl_se->dl_rq);
-		}
-	}
 
 	if (is_active)
 		dl_server_start(dl_se);
@@ -637,13 +584,15 @@ static inline int is_leftmost(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq
 
 static void init_dl_rq_bw_ratio(struct dl_rq *dl_rq);
 
-void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime)
+void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime,
+		       struct task_group *active_context)
 {
 	raw_spin_lock_init(&dl_b->dl_runtime_lock);
 	dl_b->dl_period = period;
 	dl_b->dl_runtime = runtime;
+	dl_b->dl_internal_runtime = 0;
+	dl_b->active_context = active_context;
 }
-
 
 void init_dl_bw(struct dl_bw *dl_b)
 {
@@ -3769,7 +3718,8 @@ bool __checkparam_dl(const struct sched_attr *attr, bool allow_zero_runtime)
 		return true;
 
 	/* deadline != 0 */
-	if (attr->sched_deadline == 0)
+	if ((!allow_zero_runtime || attr->sched_runtime != 0) &&
+	    attr->sched_deadline == 0)
 		return false;
 
 	/*
@@ -3800,7 +3750,8 @@ bool __checkparam_dl(const struct sched_attr *attr, bool allow_zero_runtime)
 	max = (u64)READ_ONCE(sysctl_sched_dl_period_max) * NSEC_PER_USEC;
 	min = (u64)READ_ONCE(sysctl_sched_dl_period_min) * NSEC_PER_USEC;
 
-	if (period < min || period > max)
+	if ((!allow_zero_runtime || period != 0) &&
+	    (period < min || period > max))
 		return false;
 
 	return true;
