@@ -247,7 +247,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		return 0;
 
 	/* Initialize the allocated resources now. */
-	init_dl_bandwidth(&tg->dl_bandwidth, 0, 0);
+	init_dl_bandwidth(&tg->dl_bandwidth, 0, 0, 0, RUNTIME_INF);
 
 	for_each_possible_cpu(i) {
 		s_rq = served_rq_of_rt_rq(tg->rt_rq[i]);
@@ -258,9 +258,9 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		s_rq->rt.tg = tg;
 
 		init_dl_entity(dl_se);
-		dl_se->dl_runtime = tg->dl_bandwidth.dl_runtime;
-		dl_se->dl_deadline = tg->dl_bandwidth.dl_period;
-		dl_se->dl_period = tg->dl_bandwidth.dl_period;
+		dl_se->dl_runtime = 0;
+		dl_se->dl_deadline = 0;
+		dl_se->dl_period = 0;
 		dl_se->runtime = 0;
 		dl_se->deadline = 0;
 		dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
@@ -2332,6 +2332,20 @@ void __init init_sched_rt_class(void)
 	}
 }
 
+static void switching_to_rt(struct rq *rq, struct task_struct *p)
+{
+	struct task_group *tg = p->sched_task_group;
+	int cpu = rq->cpu;
+
+	if (tg == &root_task_group)
+		return;
+
+	if (tg->dl_bandwidth.dl_min_runtime == RUNTIME_INF)
+		tg = &root_task_group;
+
+	p->rt.rt_rq = tg->rt_rq[cpu];
+}
+
 /*
  * When switching a task to RT, we may overload the runqueue
  * with RT tasks. In this case we try to push them off to
@@ -2545,6 +2559,7 @@ DEFINE_SCHED_CLASS(rt) = {
 
 	.get_rr_interval	= get_rr_interval_rt,
 
+	.switching_to		= switching_to_rt,
 	.switched_to		= switched_to_rt,
 	.prio_changed		= prio_changed_rt,
 
@@ -2584,55 +2599,93 @@ struct rt_schedulable_data {
 	struct task_group *tg;
 	u64 rt_period;
 	u64 rt_runtime;
+	u64 rt_period_min;
+	u64 rt_runtime_min;
 };
 
 static int tg_rt_schedulable(struct task_group *tg, void *data)
 {
 	struct rt_schedulable_data *d = data;
 	struct task_group *child;
-	unsigned long total, sum = 0;
+	unsigned long total, sum;
 	u64 period, runtime;
+	u64 period_min, runtime_min, old_runtime_min;
+
+	printk_deferred("at %d", tg->css.cgroup->level);
 
 	period = tg->dl_bandwidth.dl_period;
 	runtime = tg->dl_bandwidth.dl_runtime;
+	period_min = tg->dl_bandwidth.dl_min_period;
+	runtime_min = old_runtime_min = tg->dl_bandwidth.dl_min_runtime;
 
 	if (tg == d->tg) {
 		period = d->rt_period;
 		runtime = d->rt_runtime;
+		period_min = d->rt_period_min;
+		runtime_min = d->rt_runtime_min;
 	}
+
+	printk_deferred("%llu %llu %llu %llu", runtime, period, runtime_min, period_min);
 
 	/*
 	 * Cannot have more runtime than the period.
 	 */
-	if (runtime > period && runtime != RUNTIME_INF)
+	if (runtime > period ||
+	    (runtime_min > period_min && runtime_min != RUNTIME_INF)) {
+		printk_deferred("tg_rt_schedulable %llu %llu %llu %llu", runtime, period, runtime_min, period_min);
 		return -EINVAL;
+	}
 
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
-	if (dl_bandwidth_enabled() && tg != &root_task_group &&
-	    !runtime && tg_has_rt_tasks(tg))
+	if (dl_bandwidth_enabled() && !runtime_min && tg_has_rt_tasks(tg)) {
+		printk_deferred("tg_rt_schedulable runtime_min == 0 and has tasks");
 		return -EBUSY;
+	}
 
-	if (WARN_ON(!rt_group_sched_enabled() && tg != &root_task_group))
+	/*
+	 * Do not allow to switch from/to the root runqueue to/from the local
+	 * runqueue if there are active RT tasks.
+	 */
+	if (tg == d->tg &&
+	    ((old_runtime_min == RUNTIME_INF && runtime_min != RUNTIME_INF) ||
+	     (old_runtime_min != RUNTIME_INF && runtime_min == RUNTIME_INF)) &&
+	    tg_has_rt_tasks(tg)) {
+		printk_deferred("tg_rt_schedulable switching to/from root runqueue with active tasks");
 		return -EBUSY;
+	}
 
 	total = to_ratio(period, runtime);
 
 	/*
 	 * Nobody can have more than the global setting allows.
 	 */
-	if (total > to_ratio(global_rt_period(), global_rt_runtime()))
+	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
+		printk_deferred("tg_rt_schedulable nobody can have more than the global setting");
 		return -EINVAL;
+	}
 
 	if (tg == &root_task_group) {
-		if (!dl_check_tg(total))
+		if (runtime_min != RUNTIME_INF) {
+			printk_deferred("tg_rt_schedulable root cgroup runtime_min != RUNTIME_INF");
+			return -EINVAL;
+		}
+
+		if (!dl_check_tg(total)) {
+			printk_deferred("tg_rt_schedulable dl_check_tg");
 			return -EBUSY;
+		}
 	}
 
 	/*
-	 * The sum of our children's runtime should not exceed our own.
+	 * The sum of our children's runtime, plus our own bw, should not
+	 * exceed our own max.
 	 */
+	if (runtime_min != RUNTIME_INF)
+		sum = to_ratio(period_min, runtime_min);
+	else
+		sum = 0;
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
 		period = child->dl_bandwidth.dl_period;
 		runtime = child->dl_bandwidth.dl_runtime;
@@ -2645,58 +2698,111 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 		sum += to_ratio(period, runtime);
 	}
 
-	if (sum > total)
+	if (sum > total) {
+		printk_deferred("tg_rt_schedulable total %lu sum %lu", total, sum);
 		return -EINVAL;
+	}
 
 	return 0;
 }
 
-static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
+static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime,
+			    u64 period_min, u64 runtime_min)
 {
-	struct rt_schedulable_data data = {
-		.tg = tg,
-		.rt_period = period,
-		.rt_runtime = runtime,
-	};
+	struct sched_attr attr;
+	struct rt_schedulable_data data;
 
-	struct sched_attr attr = {
+	/*
+	 * Check if the runtime and period min and max values are admissible.
+	 */
+	attr = (struct sched_attr){
 		.sched_flags = 0,
 		.sched_runtime = runtime,
 		.sched_deadline = period,
 		.sched_period = period,
 	};
 
-	if (!__checkparam_dl(&attr, true))
+	if (!__checkparam_dl(&attr, true)) {
+		printk_deferred("__rt_schedulable checkparam max %llu %llu", runtime, period);
 		return -EINVAL;
+	}
 
+	attr = (struct sched_attr){
+		.sched_flags = 0,
+		.sched_runtime = runtime_min,
+		.sched_deadline = period_min,
+		.sched_period = period_min,
+	};
+
+	if (runtime_min != RUNTIME_INF && !__checkparam_dl(&attr, true)) {
+		printk_deferred("__rt_schedulable checkparam min %llu %llu", runtime_min, period_min);
+		return -EINVAL;
+	}
+
+	/*
+	 * Walk the cgroup tree and check schedulability constraints.
+	 */
 	guard(sched_rt_handler)();
 	guard(sched_domains)();
 	guard(rcu)();
+
+	data = (struct rt_schedulable_data){
+		.tg = tg,
+		.rt_period = period,
+		.rt_runtime = runtime,
+		.rt_period_min = period_min,
+		.rt_runtime_min = runtime_min,
+	};
+
 	return walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
 }
 
-static int tg_set_rt_bandwidth(struct task_group *tg,
-		u64 rt_period, u64 rt_runtime)
+int tg_rt_max_bandwidth(struct task_group *tg,
+			long *rt_period_us, long *rt_runtime_us)
 {
-	static DEFINE_MUTEX(rt_constraints_mutex);
-	int i, err = 0;
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
 
-	/*
-	 * Do not allow to set a RT runtime > 0 if the parent has RT tasks
-	 * (and is not the root group)
-	 */
-	if (rt_runtime && tg != &root_task_group &&
-		tg->parent != &root_task_group && tg_has_rt_tasks(tg->parent))
+	*rt_runtime_us = tg->dl_bandwidth.dl_runtime;
+	do_div(*rt_runtime_us, NSEC_PER_USEC);
+
+	*rt_period_us = tg->dl_bandwidth.dl_period;
+	do_div(*rt_period_us, NSEC_PER_USEC);
+
+	return 0;
+}
+
+DEFINE_MUTEX(rt_constraints_mutex);
+
+int tg_set_rt_max_bandwidth(struct task_group *tg,
+			    long rt_period_us, long rt_runtime_us)
+{
+	u64 rt_period, rt_runtime;
+	u64 rt_min_period, rt_min_runtime;
+	int err;
+
+	if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
 		return -EINVAL;
+	else
+		rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
+
+	if ((u64)rt_period_us > U64_MAX / NSEC_PER_USEC)
+		return -EINVAL;
+	else
+		rt_period = (u64)rt_period_us * NSEC_PER_USEC;
 
 	/*
 	 * Bound quota to defend quota against overflow during bandwidth shift.
 	 */
-	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime)
+	if (rt_runtime > max_rt_runtime) {
+		printk_deferred("tg_set_rt_max_bandwidth quota overflow");
 		return -EINVAL;
+	}
 
 	guard(mutex)(&rt_constraints_mutex);
-	err = __rt_schedulable(tg, rt_period, rt_runtime);
+	rt_min_period = tg->dl_bandwidth.dl_min_period;
+	rt_min_runtime = tg->dl_bandwidth.dl_min_runtime;
+	err = __rt_schedulable(tg, rt_period, rt_runtime,
+			       rt_min_period, rt_min_runtime);
 	if (err)
 		return err;
 
@@ -2704,62 +2810,77 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 	tg->dl_bandwidth.dl_period  = rt_period;
 	tg->dl_bandwidth.dl_runtime = rt_runtime;
 
-	if (tg == &root_task_group)
-		return 0;
+	return 0;
+}
 
-	for_each_possible_cpu(i) {
-		dl_init_tg(tg, i, rt_runtime, rt_period);
+int tg_rt_min_bandwidth(struct task_group *tg,
+			long *rt_period_us, long *rt_runtime_us)
+{
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+
+	*rt_runtime_us = -1;
+	if (tg->dl_bandwidth.dl_min_runtime != RUNTIME_INF) {
+		*rt_runtime_us = tg->dl_bandwidth.dl_min_runtime;
+		do_div(*rt_runtime_us, NSEC_PER_USEC);
 	}
+
+	*rt_period_us = tg->dl_bandwidth.dl_min_period;
+	do_div(*rt_period_us, NSEC_PER_USEC);
 
 	return 0;
 }
 
-int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us)
+int tg_set_rt_min_bandwidth(struct task_group *tg,
+			    long rt_period_us, long rt_runtime_us)
 {
-	u64 rt_runtime, rt_period;
+	// struct cgroup *cgrp = tg->css->cgroup.threaded;
+	u64 rt_period, rt_runtime;
+	u64 rt_min_period, rt_min_runtime;
+	int i, err;
 
-	rt_period  = tg->dl_bandwidth.dl_period;
-	rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
 	if (rt_runtime_us < 0)
-		rt_runtime = RUNTIME_INF;
+		rt_min_runtime = RUNTIME_INF;
 	else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
 		return -EINVAL;
+	else
+		rt_min_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
 
-	return tg_set_rt_bandwidth(tg, rt_period, rt_runtime);
-}
-
-long sched_group_rt_runtime(struct task_group *tg)
-{
-	u64 rt_runtime_us;
-
-	if (tg->dl_bandwidth.dl_runtime == RUNTIME_INF)
-		return -1;
-
-	rt_runtime_us = tg->dl_bandwidth.dl_runtime;
-	do_div(rt_runtime_us, NSEC_PER_USEC);
-	return rt_runtime_us;
-}
-
-int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us)
-{
-	u64 rt_runtime, rt_period;
-
-	if (rt_period_us > U64_MAX / NSEC_PER_USEC)
+	if ((u64)rt_period_us > U64_MAX / NSEC_PER_USEC)
 		return -EINVAL;
+	else
+		rt_min_period = (u64)rt_period_us * NSEC_PER_USEC;
 
-	rt_period = rt_period_us * NSEC_PER_USEC;
+	/*
+	 * Disallow consuming resources in non-leaf domain cgroups
+	 *** DO WE REALLY NEED THIS CHECK?
+	 */
+	// if (cgrp->dom_cgrp == cgrp && cgrp->nr_descendants != 0 &&
+	//     rt_min_runtime != 0 && rt_min_runtime != RUNTIME_INF)
+	// 	return -EINVAL;
+
+	guard(mutex)(&rt_constraints_mutex);
+	rt_period = tg->dl_bandwidth.dl_period;
 	rt_runtime = tg->dl_bandwidth.dl_runtime;
+	err = __rt_schedulable(tg, rt_period, rt_runtime,
+			       rt_min_period, rt_min_runtime);
+	if (err)
+		return err;
 
-	return tg_set_rt_bandwidth(tg, rt_period, rt_runtime);
-}
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+	tg->dl_bandwidth.dl_min_period  = rt_min_period;
+	tg->dl_bandwidth.dl_min_runtime = rt_min_runtime;
 
-long sched_group_rt_period(struct task_group *tg)
-{
-	u64 rt_period_us;
+	if (tg == &root_task_group)
+		return 0;
 
-	rt_period_us = tg->dl_bandwidth.dl_period;
-	do_div(rt_period_us, NSEC_PER_USEC);
-	return rt_period_us;
+	for_each_possible_cpu(i) {
+		if (rt_min_runtime == RUNTIME_INF)
+			dl_init_tg(tg, i, 0, rt_min_period);
+		else
+			dl_init_tg(tg, i, rt_min_runtime, rt_min_period);
+	}
+
+	return 0;
 }
 
 #ifdef CONFIG_SYSCTL
@@ -2771,16 +2892,12 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg)
 {
-	/* Allow executing in the root cgroup regardless of allowed bandwidth */
-	if (tg == &root_task_group)
-		return 1;
-
 	/* Don't accept real-time tasks when there is no way for them to run */
-	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
+	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_min_runtime == 0)
 		return 0;
 
 	/* tasks can be attached only if the taskgroup has no live children. */
-	return (int)is_live_sched_group(tg);
+	return 1;
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED */

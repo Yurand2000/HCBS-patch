@@ -8670,7 +8670,8 @@ void __init sched_init(void)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	init_dl_bandwidth(&root_task_group.dl_bandwidth,
-			  global_rt_period(), 0);
+			  global_rt_period(), 0,
+			  global_rt_period(), RUNTIME_INF);
 #endif /* CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -9897,28 +9898,79 @@ static int cpu_burst_write_u64(struct cgroup_subsys_state *css,
 #endif /* CONFIG_GROUP_SCHED_BANDWIDTH */
 
 #ifdef CONFIG_RT_GROUP_SCHED
-static int cpu_rt_runtime_write(struct cgroup_subsys_state *css,
-				struct cftype *cft, s64 val)
+static void __maybe_unused cpu_rt_print(struct seq_file *sf,
+					long period_us, long runtime_us)
 {
-	return sched_group_set_rt_runtime(css_tg(css), val);
+	if (runtime_us < 0)
+		seq_puts(sf, "root");
+	else
+		seq_printf(sf, "%ld", runtime_us);
+
+	seq_printf(sf, " %ld\n", period_us);
 }
 
-static s64 cpu_rt_runtime_read(struct cgroup_subsys_state *css,
-			       struct cftype *cft)
+static int __maybe_unused cpu_rt_parse(char *buf, long *period_us_p,
+				       long *runtime_us_p)
 {
-	return sched_group_rt_runtime(css_tg(css));
+	char tok[21];	/* U64_MAX */
+
+	if (sscanf(buf, "%20s %ld", tok, period_us_p) < 1)
+		return -EINVAL;
+
+	if (sscanf(tok, "%ld", runtime_us_p) < 1) {
+		if (!strcmp(tok, "root"))
+			*runtime_us_p = RUNTIME_INF;
+		else
+			return -EINVAL;
+	}
+
+	return 0;
 }
 
-static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
-				    struct cftype *cftype, u64 rt_period_us)
+static int cpu_rt_max_show(struct seq_file *sf, void *v)
 {
-	return sched_group_set_rt_period(css_tg(css), rt_period_us);
+	struct task_group *tg = css_tg(seq_css(sf));
+	long period_us, runtime_us;
+
+	tg_rt_max_bandwidth(tg, &period_us, &runtime_us);
+	cpu_rt_print(sf, period_us, runtime_us);
+	return 0;
 }
 
-static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
-				   struct cftype *cft)
+static ssize_t cpu_rt_max_write(struct kernfs_open_file *of,
+			        char *buf, size_t nbytes, loff_t off)
 {
-	return sched_group_rt_period(css_tg(css));
+	struct task_group *tg = css_tg(of_css(of));
+	long period_us, runtime_us;
+	int ret;
+
+	ret = cpu_rt_parse(buf, &period_us, &runtime_us);
+	if (!ret)
+		ret = tg_set_rt_max_bandwidth(tg, period_us, runtime_us);
+	return ret ?: nbytes;
+}
+
+static int cpu_rt_min_show(struct seq_file *sf, void *v)
+{
+	struct task_group *tg = css_tg(seq_css(sf));
+	long period_us, runtime_us;
+
+	tg_rt_min_bandwidth(tg, &period_us, &runtime_us);
+	cpu_rt_print(sf, period_us, runtime_us);
+	return 0;
+}
+
+static ssize_t cpu_rt_min_write(struct kernfs_open_file *of,
+			        char *buf, size_t nbytes, loff_t off)
+{
+	struct task_group *tg = css_tg(of_css(of));
+	long period_us, runtime_us;
+	int ret;
+
+	ret = cpu_rt_parse(buf, &period_us, &runtime_us);
+	if (!ret)
+		ret = tg_set_rt_min_bandwidth(tg, period_us, runtime_us);
+	return ret ?: nbytes;
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
@@ -10238,14 +10290,15 @@ static struct cftype cpu_files[] = {
 #endif /* CONFIG_UCLAMP_TASK_GROUP */
 #ifdef CONFIG_RT_GROUP_SCHED
 	{
-		.name = "rt_runtime_us",
-		.read_s64 = cpu_rt_runtime_read,
-		.write_s64 = cpu_rt_runtime_write,
+		.name = "rt.max",
+		.seq_show = cpu_rt_max_show,
+		.write = cpu_rt_max_write,
 	},
 	{
-		.name = "rt_period_us",
-		.read_u64 = cpu_rt_period_read_uint,
-		.write_u64 = cpu_rt_period_write_uint,
+		.name = "rt.min",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = cpu_rt_min_show,
+		.write = cpu_rt_min_write,
 	},
 #endif /* CONFIG_RT_GROUP_SCHED */
 	{ }	/* terminate */

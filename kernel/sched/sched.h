@@ -317,6 +317,8 @@ struct dl_bandwidth {
 	raw_spinlock_t          dl_runtime_lock;
 	u64                     dl_runtime;
 	u64                     dl_period;
+	u64                     dl_min_runtime;
+	u64                     dl_min_period;
 };
 
 
@@ -410,7 +412,6 @@ extern void dl_server_init(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq,
 extern void sched_init_dl_servers(void);
 extern int dl_check_tg(unsigned long total);
 extern void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period);
-extern bool is_live_sched_group(struct task_group *tg);
 
 extern void fair_server_init(struct rq *rq);
 extern void ext_server_init(struct rq *rq);
@@ -591,10 +592,14 @@ extern void start_cfs_bandwidth(struct cfs_bandwidth *cfs_b);
 extern void unthrottle_cfs_rq(struct cfs_rq *cfs_rq);
 extern bool cfs_task_bw_constrained(struct task_struct *p);
 
-extern int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us);
-extern int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us);
-extern long sched_group_rt_runtime(struct task_group *tg);
-extern long sched_group_rt_period(struct task_group *tg);
+extern int tg_rt_max_bandwidth(struct task_group *tg,
+			       long *rt_period_us, long *rt_runtime_us);
+extern int tg_set_rt_max_bandwidth(struct task_group *tg,
+				   long rt_period_us, long rt_runtime_us);
+extern int tg_rt_min_bandwidth(struct task_group *tg,
+			       long *rt_period_us, long *rt_runtime_us);
+extern int tg_set_rt_min_bandwidth(struct task_group *tg,
+				   long rt_period_us, long rt_runtime_us);
 extern int sched_rt_can_attach(struct task_group *tg);
 
 extern struct task_group *sched_create_group(struct task_group *parent);
@@ -2277,7 +2282,8 @@ static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 	 * root_task_group's rt_rq than switching in rt_rq_of_se()
 	 * Clobbers tg(!)
 	 */
-	if (!rt_group_sched_enabled())
+	if (!rt_group_sched_enabled() ||
+	    tg->dl_bandwidth.dl_min_runtime == RUNTIME_INF)
 		tg = &root_task_group;
 	p->rt.rt_rq  = tg->rt_rq[cpu];
 	p->dl.dl_rq  = &cpu_rq(cpu)->dl;
@@ -2895,7 +2901,8 @@ extern void resched_curr(struct rq *rq);
 extern void resched_curr_lazy(struct rq *rq);
 extern void resched_cpu(int cpu);
 
-void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime);
+void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime,
+		       u64 period_min, u64 runtime_min);
 extern void init_dl_entity(struct sched_dl_entity *dl_se);
 
 extern void init_cfs_throttle_work(struct task_struct *p);
