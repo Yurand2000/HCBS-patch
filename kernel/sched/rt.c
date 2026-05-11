@@ -1860,6 +1860,21 @@ void __init init_sched_rt_class(void)
 	}
 }
 
+static void switching_to_rt(struct rq *rq, struct task_struct *p)
+{
+	struct task_group *tg = p->sched_task_group;
+	int cpu = rq->cpu;
+
+	if (tg == &root_task_group)
+		return;
+
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_runtime_lock);
+	if (!rt_group_sched_enabled())
+		tg = &root_task_group;
+
+	p->rt.rt_rq = dl_bandwidth_read(tg)->active_context->rt_rq[cpu];
+}
+
 /*
  * When switching a task to RT, we may overload the runqueue
  * with RT tasks. In this case we try to push them off to
@@ -2058,6 +2073,7 @@ DEFINE_SCHED_CLASS(rt) = {
 
 	.get_rr_interval	= get_rr_interval_rt,
 
+	.switching_to		= switching_to_rt,
 	.switched_to		= switched_to_rt,
 	.prio_changed		= prio_changed_rt,
 
