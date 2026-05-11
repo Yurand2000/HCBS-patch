@@ -88,6 +88,38 @@ static void group_pull_rt_task(struct rt_rq *this_rt_rq);
 
 #ifdef CONFIG_RT_GROUP_SCHED
 
+DEFINE_MUTEX(rt_constraints_mutex);
+
+const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg)
+{
+	int held;
+
+	if (IS_ENABLED(CONFIG_LOCKDEP) && debug_locks) {
+		held = 0;
+		if (lockdep_is_held(&rt_constraints_mutex)) {
+			__assume_ctx_lock(&rt_constraints_mutex);
+			held = 1;
+		}
+
+		if (lockdep_is_held(&tg->dl_bandwidth.dl_runtime_lock)) {
+			__assume_ctx_lock(&tg->dl_bandwidth.dl_runtime_lock);
+			held = 1;
+		}
+
+		lockdep_assert(held);
+	}
+
+	return (const struct dl_bandwidth *)&tg->dl_bandwidth;
+}
+
+struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg)
+{
+	lockdep_assert_held(&rt_constraints_mutex);
+	lockdep_assert_held(&tg->dl_bandwidth.dl_runtime_lock);
+
+	return &tg->dl_bandwidth;
+}
+
 void unregister_rt_sched_group(struct task_group *tg)
 {
 	int i;
@@ -247,7 +279,10 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		return 0;
 
 	/* Initialize the allocated resources now. */
-	init_dl_bandwidth(&tg->dl_bandwidth, 0, 0);
+	scoped_guard(raw_spinlock_irq, &parent->dl_bandwidth.dl_runtime_lock) {
+		init_dl_bandwidth(&tg->dl_bandwidth, 0, RUNTIME_INF,
+				  dl_bandwidth_read(parent)->active_context);
+	}
 
 	for_each_possible_cpu(i) {
 		s_rq = rq_of_rt_rq(tg->rt_rq[i]);
@@ -258,9 +293,9 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		s_rq->rt.tg = tg;
 
 		init_dl_entity(dl_se);
-		dl_se->dl_runtime = tg->dl_bandwidth.dl_runtime;
-		dl_se->dl_deadline = tg->dl_bandwidth.dl_period;
-		dl_se->dl_period = tg->dl_bandwidth.dl_period;
+		dl_se->dl_runtime = 0;
+		dl_se->dl_deadline = 0;
+		dl_se->dl_period = 0;
 		dl_se->runtime = 0;
 		dl_se->deadline = 0;
 		dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
@@ -2312,6 +2347,21 @@ void __init init_sched_rt_class(void)
 	}
 }
 
+static void switching_to_rt(struct rq *rq, struct task_struct *p)
+{
+	struct task_group *tg = p->sched_task_group;
+	int cpu = rq->cpu;
+
+	if (tg == &root_task_group)
+		return;
+
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_runtime_lock);
+	if (!rt_group_sched_enabled())
+		tg = &root_task_group;
+
+	p->rt.rt_rq = dl_bandwidth_read(tg)->active_context->rt_rq[cpu];
+}
+
 /*
  * When switching a task to RT, we may overload the runqueue
  * with RT tasks. In this case we try to push them off to
@@ -2517,6 +2567,7 @@ DEFINE_SCHED_CLASS(rt) = {
 
 	.get_rr_interval	= get_rr_interval_rt,
 
+	.switching_to		= switching_to_rt,
 	.switched_to		= switched_to_rt,
 	.prio_changed		= prio_changed_rt,
 
@@ -2552,186 +2603,389 @@ static inline int tg_has_rt_tasks(struct task_group *tg)
 	return ret;
 }
 
-struct rt_schedulable_data {
+static int __tg_subtree_has_rt_tasks(struct task_group *tg, void *data) {
+	struct task_group *ctx = data;
+
+	if (dl_bandwidth_read(tg)->active_context == ctx && tg_has_rt_tasks(tg))
+		return 1;
+	else
+		return 0;
+}
+
+static int tg_subtree_has_rt_tasks(struct task_group *tg) {
+	lockdep_assert(rcu_read_lock_held());
+	return walk_tg_tree_from(tg, __tg_subtree_has_rt_tasks, tg_nop,
+			         dl_bandwidth_read(tg)->active_context);
+}
+
+struct tg_update_data {
 	struct task_group *tg;
 	u64 rt_period;
 	u64 rt_runtime;
 };
 
-static int tg_rt_schedulable(struct task_group *tg, void *data)
+struct tg_compute_children_bw_data {
+	struct tg_update_data update;
+	struct task_group *active_context;
+	unsigned long bw_sum;
+};
+
+static int __tg_compute_children_bw(struct task_group *tg, void *data) {
+	struct tg_compute_children_bw_data *d = data;
+	const struct dl_bandwidth *dl_b = dl_bandwidth_read(tg);
+	u64 period, runtime;
+
+	/* Skip the current task group from the sum. */
+	if (tg == d->active_context)
+		return 0;
+
+	period = dl_b->dl_period;
+	runtime = dl_b->dl_runtime;
+	if (tg == d->update.tg) {
+		period = d->update.rt_period;
+		runtime = d->update.rt_runtime;
+	}
+
+	if (runtime == RUNTIME_INF ||
+	    dl_bandwidth_read(tg->parent)->active_context != d->active_context)
+		return 0;
+
+	d->bw_sum += to_ratio(period, runtime);
+	return 0;
+}
+
+static unsigned long tg_compute_children_bw(struct task_group *tg,
+					    struct tg_update_data *data)
+{
+	struct tg_compute_children_bw_data sum_data = {
+		.active_context = tg,
+		.bw_sum = 0,
+		.update = (struct tg_update_data) {
+			.tg = data->tg,
+			.rt_period  = data->rt_period,
+			.rt_runtime = data->rt_runtime,
+		}
+	};
+
+	lockdep_assert(rcu_read_lock_held());
+	walk_tg_tree_from(tg, __tg_compute_children_bw, tg_nop, &sum_data);
+	return sum_data.bw_sum;
+}
+
+struct rt_schedulable_data {
+	struct tg_update_data update;
+	u64 rt_runtime_remainder;
+};
+
+static int __tg_rt_schedulable(struct task_group *tg, void *data)
 {
 	struct rt_schedulable_data *d = data;
-	struct task_group *child;
+	const struct dl_bandwidth *dl_b;
 	unsigned long total, sum = 0;
 	u64 period, runtime;
 
-	period = tg->dl_bandwidth.dl_period;
-	runtime = tg->dl_bandwidth.dl_runtime;
+	// printk("at %d", tg->css.cgroup->level);
 
-	if (tg == d->tg) {
-		period = d->rt_period;
-		runtime = d->rt_runtime;
+	dl_b = dl_bandwidth_read(tg);
+	period = dl_b->dl_period;
+	runtime = dl_b->dl_runtime;
+
+	if (tg == d->update.tg) {
+		period = d->update.rt_period;
+		runtime = d->update.rt_runtime;
 	}
+
+	// printk("%llu %llu", runtime, period);
+
+	/*
+	 * "max" groups are always schedulable, as they defer their access control
+	 * to their first non-max parent.
+	 */
+	if (runtime == RUNTIME_INF)
+		return 0;
 
 	/*
 	 * Cannot have more runtime than the period.
 	 */
-	if (runtime > period && runtime != RUNTIME_INF)
+	if (runtime > period) {
+		// printk("__tg_rt_schedulable %llu %llu", runtime, period);
 		return -EINVAL;
+	}
 
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
-	if (dl_bandwidth_enabled() && tg != &root_task_group &&
-	    !runtime && tg_has_rt_tasks(tg))
+	if (dl_bandwidth_enabled() && !runtime && tg != &root_task_group &&
+	    tg_subtree_has_rt_tasks(tg)) {
+		// printk("__tg_rt_schedulable runtime == 0 and has tasks");
 		return -EBUSY;
-
-	if (WARN_ON(!rt_group_sched_enabled() && tg != &root_task_group))
-		return -EBUSY;
+	}
 
 	total = to_ratio(period, runtime);
 
 	/*
 	 * Nobody can have more than the global setting allows.
 	 */
-	if (total > to_ratio(global_rt_period(), global_rt_runtime()))
+	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
+		// printk("__tg_rt_schedulable nobody can have more than the global setting");
 		return -EINVAL;
+	}
 
 	if (tg == &root_task_group) {
-		if (!dl_check_tg(total))
+		if (!dl_check_tg(total)) {
+			// printk("__tg_rt_schedulable dl_check_tg");
 			return -EBUSY;
+		}
 	}
 
 	/*
-	 * The sum of our children's runtime should not exceed our own.
+	 * The sum of our children's runtime, plus our own bw, should not
+	 * exceed our own max.
 	 */
-	list_for_each_entry_rcu(child, &tg->children, siblings) {
-		period = child->dl_bandwidth.dl_period;
-		runtime = child->dl_bandwidth.dl_runtime;
-
-		if (child == d->tg) {
-			period = d->rt_period;
-			runtime = d->rt_runtime;
-		}
-
-		sum += to_ratio(period, runtime);
+	sum = tg_compute_children_bw(tg, &d->update);
+	if (sum > total) {
+		// printk("__tg_rt_schedulable total %lu sum %lu", total, sum);
+		return -EINVAL;
 	}
 
-	if (sum > total)
-		return -EINVAL;
+	/*
+	 * Compute remaining runtime
+	 */
+	if (tg == d->update.tg) {
+		d->rt_runtime_remainder = from_ratio(period, total - sum);
+	}
 
 	return 0;
 }
 
-static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime)
+static int tg_rt_schedulable(struct tg_update_data *data, u64 *remainder_runtime)
 {
-	struct rt_schedulable_data data = {
-		.tg = tg,
-		.rt_period = period,
-		.rt_runtime = runtime,
+	int err;
+	struct rt_schedulable_data d = {
+		.update = (struct tg_update_data) {
+			.tg = data->tg,
+			.rt_period = data->rt_period,
+			.rt_runtime = data->rt_runtime,
+		},
+		.rt_runtime_remainder = 0,
 	};
-
-	struct sched_attr attr = {
-		.sched_flags = 0,
-		.sched_runtime = runtime,
-		.sched_deadline = period,
-		.sched_period = period,
-	};
-
-	if (!__checkparam_dl(&attr, true))
-		return -EINVAL;
-
-	guard(sched_rt_handler)();
-	guard(sched_domains)();
-	guard(rcu)();
-	return walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
-}
-
-static int tg_set_rt_bandwidth(struct task_group *tg,
-		u64 rt_period, u64 rt_runtime)
-{
-	static DEFINE_MUTEX(rt_constraints_mutex);
-	int i, err = 0;
 
 	/*
-	 * Do not allow to set a RT runtime > 0 if the parent has RT tasks
-	 * (and is not the root group)
+	 * Walk the cgroup tree and check schedulability constraints.
 	 */
-	if (rt_runtime && tg != &root_task_group &&
-		tg->parent != &root_task_group && tg_has_rt_tasks(tg->parent))
+	lockdep_assert(rcu_read_lock_held());
+	err = walk_tg_tree(__tg_rt_schedulable, tg_nop, &d);
+	if (err)
+		return err;
+
+	*remainder_runtime = d.rt_runtime_remainder;
+	return 0;
+}
+
+struct tg_update_active_context_data {
+	struct task_group *new_active_context;
+	struct task_group *old_active_context;
+};
+
+static int __tg_update_active_context(struct task_group *tg, void *data) {
+	struct tg_update_active_context_data *d = data;
+
+	if (dl_bandwidth_read(tg)->active_context == d->old_active_context) {
+		guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+		dl_bandwidth_write(tg)->active_context = d->new_active_context;
+	}
+
+	return 0;
+}
+
+static void tg_update_active_context(struct task_group *tg,
+				     struct task_group *old_context,
+				     struct task_group *new_context)
+{
+	struct tg_update_active_context_data data = {
+		.new_active_context = new_context,
+		.old_active_context = old_context,
+	};
+
+	lockdep_assert(rcu_read_lock_held());
+	walk_tg_tree_from(tg, __tg_update_active_context, tg_nop, &data);
+}
+
+int tg_rt_bandwidth(struct task_group *tg,
+		    long *rt_period_us, long *rt_runtime_us)
+{
+	const struct dl_bandwidth *dl_b;
+
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+	dl_b = dl_bandwidth_read(tg);
+
+	*rt_runtime_us = -1;
+	if (dl_b->dl_runtime != RUNTIME_INF) {
+		*rt_runtime_us = dl_b->dl_runtime;
+		do_div(*rt_runtime_us, NSEC_PER_USEC);
+	}
+
+	*rt_period_us = dl_b->dl_period;
+	do_div(*rt_period_us, NSEC_PER_USEC);
+
+	return 0;
+}
+
+int tg_rt_internal_bandwidth(struct task_group *tg,
+			     long *rt_period_us, long *rt_runtime_us)
+{
+	const struct dl_bandwidth *dl_b;
+
+	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+	dl_b = dl_bandwidth_read(tg);
+
+	*rt_runtime_us = dl_b->dl_internal_runtime;
+	do_div(*rt_runtime_us, NSEC_PER_USEC);
+
+	*rt_period_us = dl_b->dl_period;
+	do_div(*rt_period_us, NSEC_PER_USEC);
+
+	return 0;
+}
+
+int tg_set_rt_bandwidth(struct task_group *tg,
+			u64 rt_period_us, u64 rt_runtime_us)
+{
+	struct tg_update_data update;
+	struct task_group *parent_ctx;
+	struct dl_bandwidth *dl_b;
+	u64 rt_period, rt_runtime, old_rt_runtime;
+	u64 rt_actual_runtime = 0;
+	unsigned long bw, children_bw;
+	struct sched_attr attr;
+	int err, i;
+
+	if (rt_runtime_us == RUNTIME_INF)
+		rt_runtime = RUNTIME_INF;
+	else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC) {
+		// printk("tg_set_rt_bandwidth runtime too big");
 		return -EINVAL;
+	} else
+		rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
+
+	if ((u64)rt_period_us > U64_MAX / NSEC_PER_USEC) {
+		// printk("tg_set_rt_bandwidth period too big");
+		return -EINVAL;
+	} else
+		rt_period = (u64)rt_period_us * NSEC_PER_USEC;
+
+	/*
+	 * The root_task_group bandwidth settings are only used to reserve bw
+	 * for HCBS cgroups; runtime == "max" has no meaning there.
+	 */
+	if (rt_runtime == RUNTIME_INF && tg == &root_task_group) {
+		// printk("tg_set_rt_bandwidth root cgroup with 'max' quota");
+		return -EINVAL;
+	}
 
 	/*
 	 * Bound quota to defend quota against overflow during bandwidth shift.
 	 */
-	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime)
+	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime) {
+		// printk("tg_set_rt_bandwidth quota overflow");
 		return -EINVAL;
+	}
+
+	/*
+	 * Check if the runtime and period min and max values are admissible.
+	 */
+	attr = (struct sched_attr){
+		.sched_flags = 0,
+		.sched_runtime = rt_runtime,
+		.sched_deadline = rt_period,
+		.sched_period = rt_period,
+	};
+
+	if (rt_runtime != RUNTIME_INF && !__checkparam_dl(&attr, true)) {
+		// printk("tg_set_rt_bandwidth checkparam %llu %llu", rt_runtime, rt_period);
+		return -EINVAL;
+	}
+
+	update = (struct tg_update_data) {
+		.tg = tg,
+		.rt_period  = rt_period,
+		.rt_runtime = rt_runtime,
+	};
 
 	guard(mutex)(&rt_constraints_mutex);
-	err = __rt_schedulable(tg, rt_period, rt_runtime);
+	old_rt_runtime = dl_bandwidth_read(tg)->dl_runtime;
+
+	/*
+	 * Disallow changing from/to "max" and a HCBS reservation if the group
+	 * and all of its "max" children have active tasks.
+	 */
+	guard(sched_rt_handler)();
+	guard(sched_domains)();
+	guard(rcu)();
+	if (((rt_runtime == RUNTIME_INF && old_rt_runtime != RUNTIME_INF) ||
+	     (rt_runtime != RUNTIME_INF && old_rt_runtime == RUNTIME_INF)) &&
+	     tg_subtree_has_rt_tasks(tg)) {
+		// printk("tg_set_rt_bandwidth subtree has tasks");
+		return -EINVAL;
+	}
+
+	err = tg_rt_schedulable(&update, &rt_actual_runtime);
 	if (err)
 		return err;
 
-	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
-	tg->dl_bandwidth.dl_period  = rt_period;
-	tg->dl_bandwidth.dl_runtime = rt_runtime;
+	scoped_guard(raw_spinlock_irq, &tg->dl_bandwidth.dl_runtime_lock) {
+		dl_b = dl_bandwidth_write(tg);
+		dl_b->dl_period  = rt_period;
+		dl_b->dl_runtime = rt_runtime;
+		dl_b->dl_internal_runtime = rt_actual_runtime;
+	}
 
 	if (tg == &root_task_group)
 		return 0;
 
+	parent_ctx = dl_bandwidth_read(tg->parent)->active_context;
+
+	/*
+	* If changing from/to "max" and a HCBS reservation, must update the
+	* active_context of self and all of its subtree.
+	*/
+	if ((rt_runtime == RUNTIME_INF && old_rt_runtime != RUNTIME_INF) ||
+	    (rt_runtime != RUNTIME_INF && old_rt_runtime == RUNTIME_INF))
+	{
+		if (rt_runtime == RUNTIME_INF)
+			tg_update_active_context(tg, dl_b->active_context, parent_ctx);
+		else
+			tg_update_active_context(tg, dl_b->active_context, tg);
+
+	}
+
+	WARN_ON(rt_runtime == RUNTIME_INF && rt_actual_runtime != 0);
 	for_each_possible_cpu(i) {
-		dl_init_tg(tg, i, rt_runtime, rt_period);
+		dl_init_tg(tg, i, rt_actual_runtime, rt_period);
+	}
+
+	/*
+	 * Update the dl_servers of the parent's active context
+	 */
+	if (parent_ctx == &root_task_group)
+		return 0;
+
+	scoped_guard(raw_spinlock_irq, &parent_ctx->dl_bandwidth.dl_runtime_lock) {
+		dl_b = dl_bandwidth_write(parent_ctx);
+
+		bw = to_ratio(dl_b->dl_period, dl_b->dl_runtime);
+		children_bw = tg_compute_children_bw(parent_ctx, &update);
+
+		rt_period = dl_b->dl_period;
+		rt_actual_runtime = from_ratio(rt_period, bw - children_bw);
+		dl_b->dl_internal_runtime = rt_actual_runtime;
+	}
+
+	for_each_possible_cpu(i) {
+		dl_init_tg(parent_ctx, i, rt_actual_runtime, rt_period);
 	}
 
 	return 0;
-}
-
-int sched_group_set_rt_runtime(struct task_group *tg, long rt_runtime_us)
-{
-	u64 rt_runtime, rt_period;
-
-	rt_period  = tg->dl_bandwidth.dl_period;
-	rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
-	if (rt_runtime_us < 0)
-		rt_runtime = RUNTIME_INF;
-	else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
-		return -EINVAL;
-
-	return tg_set_rt_bandwidth(tg, rt_period, rt_runtime);
-}
-
-long sched_group_rt_runtime(struct task_group *tg)
-{
-	u64 rt_runtime_us;
-
-	if (tg->dl_bandwidth.dl_runtime == RUNTIME_INF)
-		return -1;
-
-	rt_runtime_us = tg->dl_bandwidth.dl_runtime;
-	do_div(rt_runtime_us, NSEC_PER_USEC);
-	return rt_runtime_us;
-}
-
-int sched_group_set_rt_period(struct task_group *tg, u64 rt_period_us)
-{
-	u64 rt_runtime, rt_period;
-
-	if (rt_period_us > U64_MAX / NSEC_PER_USEC)
-		return -EINVAL;
-
-	rt_period = rt_period_us * NSEC_PER_USEC;
-	rt_runtime = tg->dl_bandwidth.dl_runtime;
-
-	return tg_set_rt_bandwidth(tg, rt_period, rt_runtime);
-}
-
-long sched_group_rt_period(struct task_group *tg)
-{
-	u64 rt_period_us;
-
-	rt_period_us = tg->dl_bandwidth.dl_period;
-	do_div(rt_period_us, NSEC_PER_USEC);
-	return rt_period_us;
 }
 
 #ifdef CONFIG_SYSCTL
@@ -2743,16 +2997,20 @@ static int sched_rt_global_constraints(void)
 
 int sched_rt_can_attach(struct task_group *tg)
 {
-	/* Allow executing in the root cgroup regardless of allowed bandwidth */
-	if (tg == &root_task_group)
+	const struct dl_bandwidth *dl_b;
+
+	/* Can always run on the root task group */
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_runtime_lock);
+	dl_b = dl_bandwidth_read(tg);
+	if (dl_b->active_context == &root_task_group)
 		return 1;
 
 	/* Don't accept real-time tasks when there is no way for them to run */
-	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
+	if (rt_group_sched_enabled() &&
+	    dl_bandwidth_read(dl_b->active_context)->dl_runtime == 0)
 		return 0;
 
-	/* tasks can be attached only if the taskgroup has no live children. */
-	return (int)is_live_sched_group(tg);
+	return 1;
 }
 
 #else /* !CONFIG_RT_GROUP_SCHED */
