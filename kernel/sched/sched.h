@@ -412,7 +412,6 @@ extern void dl_server_init(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq,
 extern void sched_init_dl_servers(void);
 extern int dl_check_tg(unsigned long total);
 extern void dl_init_tg(struct task_group *tg, int cpu, u64 rt_runtime, u64 rt_period);
-extern bool is_live_sched_group(struct task_group *tg);
 
 extern void fair_server_init(struct rq *rq);
 extern void ext_server_init(struct rq *rq);
@@ -592,6 +591,12 @@ extern void start_cfs_bandwidth(struct cfs_bandwidth *cfs_b);
 extern void unthrottle_cfs_rq(struct cfs_rq *cfs_rq);
 extern bool cfs_task_bw_constrained(struct task_struct *p);
 
+extern int tg_rt_bandwidth(struct task_group *tg,
+			   long *rt_period_us, long *rt_runtime_us);
+extern int tg_rt_internal_bandwidth(struct task_group *tg,
+				    long *rt_period_us, long *rt_runtime_us);
+extern int tg_set_rt_bandwidth(struct task_group *tg,
+			       u64 rt_period_us, u64 rt_runtime_us);
 extern int sched_rt_can_attach(struct task_group *tg);
 
 extern struct task_group *sched_create_group(struct task_group *parent);
@@ -2274,9 +2279,10 @@ static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 	 * root_task_group's rt_rq than switching in rt_rq_of_se()
 	 * Clobbers tg(!)
 	 */
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_runtime_lock);
 	if (!rt_group_sched_enabled())
 		tg = &root_task_group;
-	p->rt.rt_rq  = tg->rt_rq[cpu];
+	p->rt.rt_rq  = tg->dl_bandwidth.active_context->rt_rq[cpu];
 	p->dl.dl_rq  = &cpu_rq(cpu)->dl;
 #endif /* CONFIG_RT_GROUP_SCHED */
 }
@@ -2905,6 +2911,7 @@ extern void init_cfs_throttle_work(struct task_struct *p);
 #define MAX_BW			((1ULL << MAX_BW_BITS) - 1)
 
 extern unsigned long to_ratio(u64 period, u64 runtime);
+extern u64 from_ratio(u64 period, unsigned long bw);
 
 extern void init_entity_runnable_average(struct sched_entity *se);
 extern void post_init_entity_util_avg(struct task_struct *p);
@@ -3314,6 +3321,9 @@ extern void set_rq_online (struct rq *rq);
 extern void set_rq_offline(struct rq *rq);
 
 extern bool sched_smp_initialized;
+
+extern const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg);
+extern struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg);
 
 #ifdef CONFIG_RT_GROUP_SCHED
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
