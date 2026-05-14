@@ -2597,11 +2597,41 @@ static inline int tg_has_rt_tasks(struct task_group *tg)
 
 struct rt_schedulable_data {
 	struct task_group *tg;
+	struct cpumask cpus;
 	u64 rt_period;
 	u64 rt_runtime;
 	u64 rt_period_min;
 	u64 rt_runtime_min;
 };
+
+static void compute_effective_cpumask(struct cpumask *out, struct cpumask* cpus,
+				      struct cpumask *parent_effective_cpus)
+{
+	cpumask_and(&out, &cpus, &parent_effective_cpus);
+	if (cpumask_empty(&out))
+		cpumask_copy(&out, &parent_effective_cpus)
+}
+
+static void tg_allowed_cpumask(struct task_group *tg,
+			       struct cpumask *allowed_mask)
+{
+
+}
+
+static void tg_effective_cpumask(struct task_group *tg,
+				 struct cpumask *effective_mask)
+{
+
+}
+
+static void tg_effective_cpumask_from_parent(struct cpumask *effective_mask,
+					     struct cpumask *allowed_mask,
+					     struct cpumask *parent_effective_mask)
+{
+	cpumask_and(&effective_mask, &allowed_mask, &parent_effective_mask);
+	if (cpumask_empty(effective_mask))
+		cpumask_copy(&effective_mask, &parent_effective_mask);
+}
 
 static int tg_rt_schedulable(struct task_group *tg, void *data)
 {
@@ -2610,29 +2640,33 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	unsigned long total, sum;
 	u64 period, runtime;
 	u64 period_min, runtime_min, old_runtime_min;
+	struct cpumask effective_cpus, parent_effective_cpus;
 
-	printk_deferred("at %d", tg->css.cgroup->level);
+	// printk_deferred("at %d", tg->css.cgroup->level);
 
 	period = tg->dl_bandwidth.dl_period;
 	runtime = tg->dl_bandwidth.dl_runtime;
 	period_min = tg->dl_bandwidth.dl_min_period;
 	runtime_min = old_runtime_min = tg->dl_bandwidth.dl_min_runtime;
+	tg_effective_cpumask(tg, &effective_cpus);
 
 	if (tg == d->tg) {
 		period = d->rt_period;
 		runtime = d->rt_runtime;
 		period_min = d->rt_period_min;
 		runtime_min = d->rt_runtime_min;
+		tg_effective_cpumask(tg->parent, &parent_effective_cpus);
+		tg_effective_cpumask_from_parent(&effective_cpus, &d->cpus, &parent_effective_cpus);
 	}
 
-	printk_deferred("%llu %llu %llu %llu", runtime, period, runtime_min, period_min);
+	// printk_deferred("%llu %llu %llu %llu", runtime, period, runtime_min, period_min);
 
 	/*
 	 * Cannot have more runtime than the period.
 	 */
 	if (runtime > period ||
 	    (runtime_min > period_min && runtime_min != RUNTIME_INF)) {
-		printk_deferred("tg_rt_schedulable %llu %llu %llu %llu", runtime, period, runtime_min, period_min);
+		// printk_deferred("tg_rt_schedulable %llu %llu %llu %llu", runtime, period, runtime_min, period_min);
 		return -EINVAL;
 	}
 
@@ -2640,7 +2674,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
 	 */
 	if (dl_bandwidth_enabled() && !runtime_min && tg_has_rt_tasks(tg)) {
-		printk_deferred("tg_rt_schedulable runtime_min == 0 and has tasks");
+		// printk_deferred("tg_rt_schedulable runtime_min == 0 and has tasks");
 		return -EBUSY;
 	}
 
@@ -2652,7 +2686,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	    ((old_runtime_min == RUNTIME_INF && runtime_min != RUNTIME_INF) ||
 	     (old_runtime_min != RUNTIME_INF && runtime_min == RUNTIME_INF)) &&
 	    tg_has_rt_tasks(tg)) {
-		printk_deferred("tg_rt_schedulable switching to/from root runqueue with active tasks");
+		// printk_deferred("tg_rt_schedulable switching to/from root runqueue with active tasks");
 		return -EBUSY;
 	}
 
@@ -2662,18 +2696,18 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	 * Nobody can have more than the global setting allows.
 	 */
 	if (total > to_ratio(global_rt_period(), global_rt_runtime())) {
-		printk_deferred("tg_rt_schedulable nobody can have more than the global setting");
+		// printk_deferred("tg_rt_schedulable nobody can have more than the global setting");
 		return -EINVAL;
 	}
 
 	if (tg == &root_task_group) {
 		if (runtime_min != RUNTIME_INF) {
-			printk_deferred("tg_rt_schedulable root cgroup runtime_min != RUNTIME_INF");
+			// printk_deferred("tg_rt_schedulable root cgroup runtime_min != RUNTIME_INF");
 			return -EINVAL;
 		}
 
 		if (!dl_check_tg(total)) {
-			printk_deferred("tg_rt_schedulable dl_check_tg");
+			// printk_deferred("tg_rt_schedulable dl_check_tg");
 			return -EBUSY;
 		}
 	}
@@ -2686,20 +2720,26 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 		sum = to_ratio(period_min, runtime_min);
 	else
 		sum = 0;
+	cpumask_copy(&parent_effective_cpus, &effective_cpus);
 	list_for_each_entry_rcu(child, &tg->children, siblings) {
+		struct allowed_cpus;
+
 		period = child->dl_bandwidth.dl_period;
 		runtime = child->dl_bandwidth.dl_runtime;
+		tg_allowed_cpumask(child, &allowed_cpus);
+		tg_effective_cpumask_from_parent(&effective_cpus, &allowed_cpus, &parent_effective_cpus);
 
 		if (child == d->tg) {
 			period = d->rt_period;
 			runtime = d->rt_runtime;
+			tg_effective_cpumask_from_parent(&effective_cpus, &d->cpus, &parent_effective_cpus);
 		}
 
 		sum += to_ratio(period, runtime);
 	}
 
 	if (sum > total) {
-		printk_deferred("tg_rt_schedulable total %lu sum %lu", total, sum);
+		// printk_deferred("tg_rt_schedulable total %lu sum %lu", total, sum);
 		return -EINVAL;
 	}
 
@@ -2723,7 +2763,7 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime,
 	};
 
 	if (!__checkparam_dl(&attr, true)) {
-		printk_deferred("__rt_schedulable checkparam max %llu %llu", runtime, period);
+		// printk_deferred("__rt_schedulable checkparam max %llu %llu", runtime, period);
 		return -EINVAL;
 	}
 
@@ -2735,7 +2775,7 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime,
 	};
 
 	if (runtime_min != RUNTIME_INF && !__checkparam_dl(&attr, true)) {
-		printk_deferred("__rt_schedulable checkparam min %llu %llu", runtime_min, period_min);
+		// printk_deferred("__rt_schedulable checkparam min %llu %llu", runtime_min, period_min);
 		return -EINVAL;
 	}
 
@@ -2752,7 +2792,10 @@ static int __rt_schedulable(struct task_group *tg, u64 period, u64 runtime,
 		.rt_runtime = runtime,
 		.rt_period_min = period_min,
 		.rt_runtime_min = runtime_min,
+		.cpus = {}
 	};
+
+	cpuset_cgroup_cpus_allowed(tg->css.cgroup, &data.cpus);
 
 	return walk_tg_tree(tg_rt_schedulable, tg_nop, &data);
 }
@@ -2794,7 +2837,7 @@ int tg_set_rt_max_bandwidth(struct task_group *tg,
 	 * Bound quota to defend quota against overflow during bandwidth shift.
 	 */
 	if (rt_runtime > max_rt_runtime) {
-		printk_deferred("tg_set_rt_max_bandwidth quota overflow");
+		// printk_deferred("tg_set_rt_max_bandwidth quota overflow");
 		return -EINVAL;
 	}
 

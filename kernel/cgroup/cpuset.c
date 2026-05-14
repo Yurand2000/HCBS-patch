@@ -4111,6 +4111,48 @@ bool cpuset_cpus_allowed_fallback(struct task_struct *tsk)
 	return changed;
 }
 
+void cpuset_cgroup_cpus_allowed(struct cgroup *cgroup, struct cpumask *mask)
+{
+	struct cgroup_subsys_state *css;
+	struct cpuset *cs;
+
+	if (!cgroup || !cpuset_v2()) {
+		cpumask_copy(mask, cpu_possible_mask);
+		return;
+	}
+
+	css = cgroup_get_e_css(cgroup, &cpuset_cgrp_subsys);
+	if (!css) {
+		cpumask_copy(mask, cpu_possible_mask);
+		return;
+	}
+
+	cs = container_of(css, struct cpuset, css);
+	cpumask_copy(mask, cs->cpus_allowed);
+	css_put(css);
+}
+
+void cpuset_cgroup_cpus_effective(struct cgroup *cgroup, struct cpumask *mask)
+{
+	struct cgroup_subsys_state *css;
+	struct cpuset *cs;
+
+	if (!cgroup || !cpuset_v2()) {
+		cpumask_copy(mask, cpu_online_mask);
+		return;
+	}
+
+	css = cgroup_get_e_css(cgroup, &cpuset_cgrp_subsys);
+	if (!css) {
+		cpumask_copy(mask, cpu_online_mask);
+		return;
+	}
+
+	cs = container_of(css, struct cpuset, css);
+	cpumask_copy(mask, cs->effective_cpus);
+	css_put(css);
+}
+
 void __init cpuset_init_current_mems_allowed(void)
 {
 	nodes_setall(current->mems_allowed);
