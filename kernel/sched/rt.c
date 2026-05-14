@@ -2402,6 +2402,9 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 			struct sched_dl_entity *dl_se = dl_group_of(rt_rq_of_se(&p->rt));
 
 			p->dl_server = dl_se;
+
+			if (!dl_se->dl_runtime)
+				rt_queue_push_from_group(rt_rq);
 		}
 
 		return;
