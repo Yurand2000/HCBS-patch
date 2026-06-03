@@ -1897,6 +1897,8 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 static void
 prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 {
+	struct rt_rq *rt_rq = rt_rq_of_se(&p->rt);
+
 	if (!task_on_rq_queued(p))
 		return;
 
@@ -1909,7 +1911,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * may need to pull tasks to this runqueue.
 		 */
 		if (oldprio < p->prio)
-			rt_queue_pull_task(rt_rq_of_se(&p->rt));
+			rt_queue_pull_task(rt_rq);
 
 		/*
 		 * If there's a higher priority task waiting to run
@@ -1923,8 +1925,8 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * running task for preemption. We can preempt only if both tasks are
 		 * in the same cgroup or on the global runqueue.
 		 */
-		if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) &&
-		    rt_rq_of_se(&p->rt)->tg != rt_rq_of_se(&rq->curr->rt)->tg)
+		if (rt_group_sched_enabled() &&
+		    rt_rq->tg != rt_rq_of_se(&rq->curr->rt)->tg)
 			return;
 
 		/*
