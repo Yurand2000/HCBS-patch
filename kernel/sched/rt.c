@@ -627,7 +627,7 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 
 	inc_rt_prio(rt_rq, rt_se_prio(rt_se));
 
-	if (rt_group_sched_enabled() && is_dl_group(rt_rq)) {
+	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
@@ -646,7 +646,7 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 
 	dec_rt_prio(rt_rq, rt_se_prio(rt_se));
 
-	if (rt_group_sched_enabled() && is_dl_group(rt_rq)) {
+	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		if (!dl_se->dl_throttled)
@@ -836,8 +836,7 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	update_stats_wait_start_rt(rt_rq_of_se(rt_se), rt_se);
 
 	/* Task arriving in an idle group of tasks. */
-	if (rt_group_sched_enabled() &&
-	    is_dl_group(rt_rq) && rt_rq->rt_nr_running == 0) {
+	if (is_dl_group(rt_rq) && rt_rq->rt_nr_running == 0) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
 		dl_server_start(dl_se);
