@@ -9875,32 +9875,6 @@ static int cpu_burst_write_u64(struct cgroup_subsys_state *css,
 }
 #endif /* CONFIG_GROUP_SCHED_BANDWIDTH */
 
-#ifdef CONFIG_RT_GROUP_SCHED
-static int cpu_rt_runtime_write(struct cgroup_subsys_state *css,
-				struct cftype *cft, s64 val)
-{
-	return sched_group_set_rt_runtime(css_tg(css), val);
-}
-
-static s64 cpu_rt_runtime_read(struct cgroup_subsys_state *css,
-			       struct cftype *cft)
-{
-	return sched_group_rt_runtime(css_tg(css));
-}
-
-static int cpu_rt_period_write_uint(struct cgroup_subsys_state *css,
-				    struct cftype *cftype, u64 rt_period_us)
-{
-	return sched_group_set_rt_period(css_tg(css), rt_period_us);
-}
-
-static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
-				   struct cftype *cft)
-{
-	return sched_group_rt_period(css_tg(css));
-}
-#endif /* CONFIG_RT_GROUP_SCHED */
-
 #ifdef CONFIG_GROUP_SCHED_WEIGHT
 static s64 cpu_idle_read_s64(struct cgroup_subsys_state *css,
 			       struct cftype *cft)
