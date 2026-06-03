@@ -1867,8 +1867,6 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
-	struct rt_rq *rt_rq = rt_rq_of_se(&p->rt);
-
 	/*
 	 * If we are running, update the avg_rt tracking, as the running time
 	 * will now on be accounted into the latter.
@@ -1899,8 +1897,6 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 static void
 prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 {
-	struct rt_rq *rt_rq = rt_rq_of_se(&p->rt);
-
 	if (!task_on_rq_queued(p))
 		return;
 
@@ -1913,7 +1909,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * may need to pull tasks to this runqueue.
 		 */
 		if (oldprio < p->prio)
-			rt_queue_pull_task(rt_rq);
+			rt_queue_pull_task(rt_rq_of_se(&p->rt));
 
 		/*
 		 * If there's a higher priority task waiting to run
