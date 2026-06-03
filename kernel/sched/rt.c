@@ -2867,11 +2867,8 @@ int tg_rt_internal_bandwidth(struct task_group *tg,
 	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
 	dl_b = dl_bandwidth_read(tg);
 
-	*rt_runtime_us = -1;
-	if (dl_b->dl_internal_runtime != RUNTIME_INF) {
-		*rt_runtime_us = dl_b->dl_internal_runtime;
-		do_div(*rt_runtime_us, NSEC_PER_USEC);
-	}
+	*rt_runtime_us = dl_b->dl_internal_runtime;
+	do_div(*rt_runtime_us, NSEC_PER_USEC);
 
 	*rt_period_us = dl_b->dl_period;
 	do_div(*rt_period_us, NSEC_PER_USEC);
