@@ -3331,16 +3331,16 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 	return container_of_const(rt_se, struct task_struct, rt);
 }
 
-static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
 	return container_of_const(rt_rq, struct rq, rt);
 }
 
-static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *global_rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	/* Cannot fold with non-CONFIG_RT_GROUP_SCHED version, layout */
-	return cpu_rq(served_rq_of_rt_rq(rt_rq)->cpu);
+	return cpu_rq(rq_of_rt_rq(rt_rq)->cpu);
 }
 
 static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
@@ -3349,9 +3349,9 @@ static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
 	return rt_se->rt_rq;
 }
 
-static inline struct rq *rq_of_rt_se(struct sched_rt_entity *rt_se)
+static inline struct task_group *tg_of_se(struct sched_rt_entity *rt_se)
 {
-	return rq_of_rt_rq(rt_se->rt_rq);
+	return rt_rq_of_se(rt_se)->tg;
 }
 
 static inline int is_dl_group(struct rt_rq *rt_rq)
@@ -3367,7 +3367,7 @@ static inline struct sched_dl_entity *dl_group_of(struct rt_rq *rt_rq)
 	if (WARN_ON_ONCE(!is_dl_group(rt_rq)))
 		return NULL;
 
-	return rt_rq->tg->dl_se[served_rq_of_rt_rq(rt_rq)->cpu];
+	return rt_rq->tg->dl_se[rq_of_rt_rq(rt_rq)->cpu];
 }
 #else
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
@@ -3375,28 +3375,26 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 	return container_of_const(rt_se, struct task_struct, rt);
 }
 
-static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
-{
-	return container_of_const(rt_rq, struct rq, rt);
-}
-
 static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	return container_of_const(rt_rq, struct rq, rt);
 }
 
-static inline struct rq *rq_of_rt_se(struct sched_rt_entity *rt_se)
+static inline struct rq *global_rq_of_rt_rq(struct rt_rq *rt_rq)
 {
-	struct task_struct *p = rt_task_of(rt_se);
-
-	return task_rq(p);
+	return container_of_const(rt_rq, struct rq, rt);
 }
 
 static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
 {
-	struct rq *rq = rq_of_rt_se(rt_se);
+	struct rq *rq = task_rq(rt_task_of(rt_se));
 
 	return &rq->rt;
+}
+
+static inline struct task_group *tg_of_se(struct sched_rt_entity *rt_se)
+{
+	return &root_task_group;
 }
 
 static inline int is_dl_group(struct rt_rq *rt_rq)
