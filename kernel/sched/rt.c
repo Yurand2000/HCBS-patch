@@ -1079,7 +1079,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	if (rq->donor->sched_class != &rt_sched_class)
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
-	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
+	if (!is_dl_group(rt_rq))
 		rt_queue_push_tasks(rt_rq);
 }
 
@@ -1802,7 +1802,7 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	if (!task_on_rq_queued(p) || rt_rq->rt_nr_running)
 		return;
 
-	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
+	if (!is_dl_group(rt_rq))
 		rt_queue_pull_task(rt_rq);
 }
 
@@ -1840,7 +1840,7 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	 * then see if we can move to another run queue.
 	 */
 	if (task_on_rq_queued(p)) {
-		if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
+		if (is_dl_group(rt_rq)) {
 			if (p->prio < rq->donor->prio)
 				resched_curr(rq);
 		} else {
@@ -1874,7 +1874,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * may need to pull tasks to this runqueue.
 		 */
 		if (oldprio < p->prio)
-			if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
+			if (!is_dl_group(rt_rq))
 				rt_queue_pull_task(rt_rq);
 
 		/*
