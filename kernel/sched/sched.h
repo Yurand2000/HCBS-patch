@@ -3333,16 +3333,16 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 	return container_of_const(rt_se, struct task_struct, rt);
 }
 
-static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
 	return container_of_const(rt_rq, struct rq, rt);
 }
 
-static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *global_rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	/* Cannot fold with non-CONFIG_RT_GROUP_SCHED version, layout */
-	return cpu_rq(served_rq_of_rt_rq(rt_rq)->cpu);
+	return cpu_rq(rq_of_rt_rq(rt_rq)->cpu);
 }
 
 static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
@@ -3356,12 +3356,12 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 	return container_of_const(rt_se, struct task_struct, rt);
 }
 
-static inline struct rq *served_rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	return container_of_const(rt_rq, struct rq, rt);
 }
 
-static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
+static inline struct rq *global_rq_of_rt_rq(struct rt_rq *rt_rq)
 {
 	return container_of_const(rt_rq, struct rq, rt);
 }
