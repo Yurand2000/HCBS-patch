@@ -1327,6 +1327,16 @@ struct rq {
 	struct list_head	cfsb_csd_list;
 #endif
 
+#ifdef CONFIG_RT_GROUP_SCHED
+	/*
+	 * Balance callbacks operate only on global runqueues.
+	 * These pointers allow referencing cgroup specific runqueues
+	 * for balancing operations.
+	 */
+	struct rq		*rq_to_push_from;
+	struct rq		*rq_to_pull_to;
+#endif
+
 	atomic_t		nr_iowait;
 } __no_randomize_layout;
 
@@ -3333,6 +3343,11 @@ static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
 	return rt_se->rt_rq;
 }
 
+static inline struct task_group *tg_of_se(struct sched_rt_entity *rt_se)
+{
+	return rt_rq_of_se(rt_se)->tg;
+}
+
 static inline int is_dl_group(struct rt_rq *rt_rq)
 {
 	return rt_rq->tg != &root_task_group;
@@ -3369,6 +3384,11 @@ static inline struct rt_rq *rt_rq_of_se(struct sched_rt_entity *rt_se)
 	struct rq *rq = task_rq(rt_task_of(rt_se));
 
 	return &rq->rt;
+}
+
+static inline struct task_group *tg_of_se(struct sched_rt_entity *rt_se)
+{
+	return &root_task_group;
 }
 
 static inline int is_dl_group(struct rt_rq *rt_rq)
