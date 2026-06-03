@@ -227,7 +227,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		return 0;
 
 	/* Initialize the allocated resources now. */
-	init_dl_bandwidth(&tg->dl_bandwidth, 0, 0);
+	init_dl_bandwidth(&tg->dl_bandwidth, 0, 0, tg);
 
 	for_each_possible_cpu(i) {
 		s_rq = rq_of_rt_rq(tg->rt_rq[i]);
@@ -238,9 +238,9 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		s_rq->rt.tg = tg;
 
 		init_dl_entity(dl_se);
-		dl_se->dl_runtime = tg->dl_bandwidth.dl_runtime;
-		dl_se->dl_deadline = tg->dl_bandwidth.dl_period;
-		dl_se->dl_period = tg->dl_bandwidth.dl_period;
+		dl_se->dl_runtime = 0;
+		dl_se->dl_deadline = 0;
+		dl_se->dl_period = 0;
 		dl_se->runtime = 0;
 		dl_se->deadline = 0;
 		dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
