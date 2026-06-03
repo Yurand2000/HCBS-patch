@@ -325,6 +325,9 @@ static inline int rt_overloaded(struct rq *rq)
 
 static inline void rt_set_overload(struct rq *rq)
 {
+	if (is_dl_group(&rq->rt))
+		return;
+
 	if (!rq->online)
 		return;
 
@@ -344,6 +347,9 @@ static inline void rt_set_overload(struct rq *rq)
 
 static inline void rt_clear_overload(struct rq *rq)
 {
+	if (is_dl_group(&rq->rt))
+		return;
+
 	if (!rq->online)
 		return;
 
@@ -391,7 +397,7 @@ static void enqueue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
 		rt_rq->highest_prio.next = p->prio;
 
 	if (!rt_rq->overloaded) {
-		rt_set_overload(global_rq_of_rt_rq(rt_rq));
+		rt_set_overload(rq_of_rt_rq(rt_rq));
 		rt_rq->overloaded = 1;
 	}
 }
@@ -409,7 +415,7 @@ static void dequeue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
 		rt_rq->highest_prio.next = MAX_RT_PRIO-1;
 
 		if (rt_rq->overloaded) {
-			rt_clear_overload(global_rq_of_rt_rq(rt_rq));
+			rt_clear_overload(rq_of_rt_rq(rt_rq));
 			rt_rq->overloaded = 0;
 		}
 	}
