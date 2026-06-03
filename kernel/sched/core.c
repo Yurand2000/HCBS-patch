@@ -8649,7 +8649,7 @@ void __init sched_init(void)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 	init_dl_bandwidth(&root_task_group.dl_bandwidth,
-			  global_rt_period(), global_rt_runtime());
+			  global_rt_period(), 0, &root_task_group);
 #endif /* CONFIG_RT_GROUP_SCHED */
 
 #ifdef CONFIG_CGROUP_SCHED
