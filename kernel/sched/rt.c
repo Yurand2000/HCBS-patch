@@ -152,12 +152,13 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct rq_flags *rf)
 {
 	struct rt_rq *rt_rq = &dl_se->my_q->rt;
+	struct rq *global_rq = global_rq_of_rt_rq(rt_rq);
 	struct task_struct *p;
 
 	if (!sched_rt_runnable(dl_se->my_q)) {
-		rq_unpin_lock(rq, rf);
+		rq_unpin_lock(global_rq, rf);
 		group_pull_rt_task(rt_rq);
-		rq_repin_lock(rq, rf);
+		rq_repin_lock(global_rq, rf);
 
 		if (!sched_rt_runnable(dl_se->my_q))
 			return NULL;
