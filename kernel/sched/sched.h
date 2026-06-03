@@ -323,9 +323,11 @@ struct rt_bandwidth {
 };
 
 struct dl_bandwidth {
-	raw_spinlock_t          dl_runtime_lock;
-	u64                     dl_runtime;
-	u64                     dl_period;
+	raw_spinlock_t		dl_runtime_lock;
+	u64			dl_runtime;
+	u64			dl_internal_runtime;
+	u64			dl_period;
+	struct task_group	*active_context;
 };
 
 
