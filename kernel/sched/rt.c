@@ -372,6 +372,9 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 {
 	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 
+	if (is_dl_group(rt_rq))
+		return;
+
 	if (!has_pushable_tasks(rt_rq))
 		return;
 
@@ -381,6 +384,9 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 {
 	struct rq *rq = global_rq_of_rt_rq(rt_rq);
+
+	if (is_dl_group(rt_rq))
+		return;
 
 	queue_balance_callback(rq, &per_cpu(rt_pull_head, rq->cpu), pull_rt_task);
 }
@@ -1119,8 +1125,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	if (rq->donor->sched_class != &rt_sched_class)
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
-	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
-		rt_queue_push_tasks(rt_rq);
+	rt_queue_push_tasks(rt_rq);
 }
 
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
@@ -1391,6 +1396,9 @@ static int push_rt_task(struct rq *rq, bool pull)
 	struct task_struct *next_task;
 	struct rq *lowest_rq;
 	int ret = 0;
+
+	if (is_dl_group(&rq->rt))
+		return 0;
 
 	if (!rq->rt.overloaded)
 		return 0;
@@ -1696,6 +1704,9 @@ static void pull_rt_task(struct rq *this_rq)
 	struct rq *src_rq;
 	int rt_overload_count = rt_overloaded(this_rq);
 
+	if (is_dl_group(&this_rq->rt))
+		return;
+
 	if (likely(!rt_overload_count))
 		return;
 
@@ -1851,8 +1862,7 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	if (!task_on_rq_queued(p) || rt_rq->rt_nr_running)
 		return;
 
-	if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
-		rt_queue_pull_task(rt_rq);
+	rt_queue_pull_task(rt_rq);
 }
 
 void __init init_sched_rt_class(void)
@@ -1889,13 +1899,8 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	 * then see if we can move to another run queue.
 	 */
 	if (task_on_rq_queued(p)) {
-		if (IS_ENABLED(CONFIG_RT_GROUP_SCHED) && is_dl_group(rt_rq)) {
-			if (p->prio < rq->donor->prio)
-				resched_curr(rq);
-		} else {
-			if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
-				rt_queue_push_tasks(rt_rq_of_se(&p->rt));
-		}
+		if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
+			rt_queue_push_tasks(rt_rq_of_se(&p->rt));
 
 		if (p->prio < rq->donor->prio && cpu_online(cpu_of(rq)))
 			resched_curr(rq);
@@ -1923,8 +1928,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 		 * may need to pull tasks to this runqueue.
 		 */
 		if (oldprio < p->prio)
-			if (!IS_ENABLED(CONFIG_RT_GROUP_SCHED) || !is_dl_group(rt_rq))
-				rt_queue_pull_task(rt_rq);
+			rt_queue_pull_task(rt_rq);
 
 		/*
 		 * If there's a higher priority task waiting to run
