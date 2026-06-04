@@ -381,7 +381,7 @@ int dl_check_tg(unsigned long total)
 
 void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 {
-	struct rq *rq = container_of_const(dl_se->dl_rq, struct rq, dl);
+	struct rq *rq = rq_of_dl_se(dl_se);
 	int is_active;
 	u64 new_bw;
 
