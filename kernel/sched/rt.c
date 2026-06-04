@@ -2261,9 +2261,24 @@ static int tg_set_rt_bandwidth(struct task_group *tg,
 
 int sched_rt_can_attach(struct task_group *tg)
 {
+	struct task_group *ctx;
+
+	/* If rt group sched is disabled, tasks are always run in the root rq */
+	if (!rt_group_sched_enabled())
+		return 1;
+
+	/* Can always run on the root task group */
+	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_runtime_lock) {
+		ctx = dl_bandwidth_read(tg)->active_context;
+		if (ctx == &root_task_group)
+			return 1;
+	}
+
 	/* Don't accept real-time tasks when there is no way for them to run */
-	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
-		return 0;
+	scoped_guard(raw_spinlock_irqsave, &ctx->dl_bandwidth.dl_runtime_lock) {
+		if (dl_bandwidth_read(ctx)->dl_runtime == 0)
+			return 0;
+	}
 
 	return 1;
 }
