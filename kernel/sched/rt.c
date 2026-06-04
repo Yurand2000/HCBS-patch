@@ -2502,13 +2502,6 @@ static int sched_rt_global_validate(void)
 			NSEC_PER_USEC > max_rt_runtime)))
 		return -EINVAL;
 
-#ifdef CONFIG_RT_GROUP_SCHED
-	if (!rt_group_sched_enabled())
-		return 0;
-
-	scoped_guard(mutex, &rt_constraints_mutex)
-		return __rt_schedulable(NULL, 0, 0);
-#endif
 	return 0;
 }
 
