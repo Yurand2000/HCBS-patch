@@ -86,6 +86,38 @@ void init_rt_rq(struct rt_rq *rt_rq)
 
 #ifdef CONFIG_RT_GROUP_SCHED
 
+DEFINE_MUTEX(rt_constraints_mutex);
+
+const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg)
+{
+	int held;
+
+	if (IS_ENABLED(CONFIG_LOCKDEP) && debug_locks) {
+		held = 0;
+		if (lockdep_is_held(&rt_constraints_mutex)) {
+			__assume_ctx_lock(&rt_constraints_mutex);
+			held = 1;
+		}
+
+		if (lockdep_is_held(&tg->dl_bandwidth.dl_runtime_lock)) {
+			__assume_ctx_lock(&tg->dl_bandwidth.dl_runtime_lock);
+			held = 1;
+		}
+
+		lockdep_assert(held);
+	}
+
+	return (const struct dl_bandwidth *)&tg->dl_bandwidth;
+}
+
+struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg)
+{
+	lockdep_assert_held(&rt_constraints_mutex);
+	lockdep_assert_held(&tg->dl_bandwidth.dl_runtime_lock);
+
+	return &tg->dl_bandwidth;
+}
+
 void unregister_rt_sched_group(struct task_group *tg)
 {
 
@@ -1791,8 +1823,6 @@ DEFINE_SCHED_CLASS(rt) = {
 /*
  * Ensure that the real time constraints are schedulable.
  */
-static DEFINE_MUTEX(rt_constraints_mutex);
-
 static inline int tg_has_rt_tasks(struct task_group *tg)
 {
 	struct task_struct *task;
