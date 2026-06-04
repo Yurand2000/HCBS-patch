@@ -3321,6 +3321,9 @@ extern void set_rq_offline(struct rq *rq);
 
 extern bool sched_smp_initialized;
 
+extern const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg);
+extern struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg);
+
 #ifdef CONFIG_RT_GROUP_SCHED
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
