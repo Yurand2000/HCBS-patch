@@ -387,10 +387,10 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 				       push_rt_tasks);
 	} else {
 
-		if (global_rq->rq_to_push_from)
+		if (rq_to_push_from(global_rq))
 			return;
 
-		global_rq->rq_to_push_from = rq;
+		rq_to_push_from(global_rq) = rq;
 		queue_balance_callback(global_rq,
 				       &per_cpu(rt_group_push_head, global_rq->cpu),
 				       push_group_rt_tasks);
@@ -411,10 +411,10 @@ static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 	} else {
 
 		dl_se = dl_group_of(rt_rq);
-		if (dl_se->dl_throttled || global_rq->rq_to_pull_to)
+		if (dl_se->dl_throttled || rq_to_pull_to(global_rq))
 			return;
 
-		global_rq->rq_to_pull_to = rq;
+		rq_to_pull_to(global_rq) = rq;
 		queue_balance_callback(global_rq,
 				       &per_cpu(rt_group_pull_head, global_rq->cpu),
 				       pull_group_rt_task);
@@ -423,35 +423,35 @@ static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 
 static void push_group_rt_tasks(struct rq *global_rq)
 {
-	struct rt_rq *rt_rq = &global_rq->rq_to_push_from->rt;
+	struct rt_rq *rt_rq = &rq_to_push_from(global_rq)->rt;
 	struct rq *rq = rq_of_rt_rq(rt_rq);
 
 	if (!rt_group_sched_enabled())
 		return;
 
-	BUG_ON(global_rq->rq_to_push_from == NULL);
+	BUG_ON(rq_to_push_from(global_rq) == NULL);
 	BUG_ON(rq == global_rq);
 
 	if (rt_rq->rt_nr_running <= 1 && !dl_group_of(rt_rq)->dl_throttled)
 		return;
 
 	push_rt_tasks(rq);
-	global_rq->rq_to_push_from = NULL;
+	rq_to_push_from(global_rq) = NULL;
 }
 
 static void pull_group_rt_task(struct rq *global_rq)
 {
-	struct rt_rq *rt_rq = &global_rq->rq_to_pull_to->rt;
+	struct rt_rq *rt_rq = &rq_to_pull_to(global_rq)->rt;
 	struct rq *rq = rq_of_rt_rq(rt_rq);
 
 	if (!rt_group_sched_enabled())
 		return;
 
-	BUG_ON(global_rq->rq_to_pull_to == NULL);
+	BUG_ON(rq_to_pull_to(global_rq) == NULL);
 	BUG_ON(rq == global_rq);
 
 	pull_rt_task(rq);
-	global_rq->rq_to_pull_to = NULL;
+	rq_to_pull_to(global_rq) = NULL;
 }
 
 static void enqueue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
