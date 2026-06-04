@@ -2310,9 +2310,10 @@ static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 	 * root_task_group's rt_rq than switching in rt_rq_of_se()
 	 * Clobbers tg(!)
 	 */
+	guard(raw_spinlock_irqsave)(&tg->dl_bandwidth.dl_runtime_lock);
 	if (!rt_group_sched_enabled())
 		tg = &root_task_group;
-	p->rt.rt_rq  = tg->rt_rq[cpu];
+	p->rt.rt_rq  = tg->dl_bandwidth.active_context->rt_rq[cpu];
 	p->dl.dl_rq  = &cpu_rq(cpu)->dl;
 #endif /* CONFIG_RT_GROUP_SCHED */
 }
