@@ -4815,6 +4815,14 @@ u64 to_ratio(u64 period, u64 runtime)
 	return div64_u64(runtime << BW_SHIFT, period);
 }
 
+u64 from_ratio(u64 period, u64 bw)
+{
+	if (bw == BW_UNIT)
+		return RUNTIME_INF;
+
+	return (bw * period) >> BW_SHIFT;
+}
+
 /*
  * wake_up_new_task - wake up a newly created task for the first time.
  *
