@@ -2303,7 +2303,7 @@ static int __tg_update_active_context(struct task_group *tg, void *data) {
 	struct tg_update_active_context_data *d = data;
 
 	if (dl_bandwidth_read(tg)->active_context == d->old_active_context) {
-		guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+		guard(raw_spinlock_irq)(dl_bw_lock_of_tg(tg));
 		dl_bandwidth_write(tg)->active_context = d->new_active_context;
 	}
 
@@ -2327,7 +2327,7 @@ int tg_rt_bandwidth(struct task_group *tg,
 {
 	const struct dl_bandwidth *dl_b;
 
-	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+	guard(raw_spinlock_irq)(dl_bw_lock_of_tg(tg));
 	dl_b = dl_bandwidth_read(tg);
 
 	*rt_runtime_us = -1;
@@ -2347,7 +2347,7 @@ int tg_rt_internal_bandwidth(struct task_group *tg,
 {
 	const struct dl_bandwidth *dl_b;
 
-	guard(raw_spinlock_irq)(&tg->dl_bandwidth.dl_runtime_lock);
+	guard(raw_spinlock_irq)(dl_bw_lock_of_tg(tg));
 	dl_b = dl_bandwidth_read(tg);
 
 	*rt_runtime_us = dl_b->dl_internal_runtime;
@@ -2434,7 +2434,7 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	if (err)
 		return err;
 
-	scoped_guard(raw_spinlock_irq, &tg->dl_bandwidth.dl_runtime_lock) {
+	scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(tg)) {
 		dl_b = dl_bandwidth_write(tg);
 		dl_b->dl_period  = rt_period;
 		dl_b->dl_runtime = rt_runtime;
@@ -2471,7 +2471,7 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	if (parent_ctx == &root_task_group)
 		return 0;
 
-	scoped_guard(raw_spinlock_irq, &parent_ctx->dl_bandwidth.dl_runtime_lock) {
+	scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(parent_ctx)) {
 		dl_b = dl_bandwidth_write(parent_ctx);
 
 		bw = to_ratio(dl_b->dl_period, dl_b->dl_runtime);
@@ -2498,14 +2498,14 @@ int sched_rt_can_attach(struct task_group *tg)
 		return 1;
 
 	/* Can always run on the root task group */
-	scoped_guard(raw_spinlock_irqsave, &tg->dl_bandwidth.dl_runtime_lock) {
+	scoped_guard(raw_spinlock_irqsave, dl_bw_lock_of_tg(tg)) {
 		ctx = dl_bandwidth_read(tg)->active_context;
 		if (ctx == &root_task_group)
 			return 1;
 	}
 
 	/* Don't accept real-time tasks when there is no way for them to run */
-	scoped_guard(raw_spinlock_irqsave, &ctx->dl_bandwidth.dl_runtime_lock) {
+	scoped_guard(raw_spinlock_irqsave, dl_bw_lock_of_tg(ctx)) {
 		if (dl_bandwidth_read(ctx)->dl_runtime == 0)
 			return 0;
 	}
