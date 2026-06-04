@@ -99,8 +99,8 @@ const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg)
 			held = 1;
 		}
 
-		if (lockdep_is_held(&tg->dl_bandwidth.dl_runtime_lock)) {
-			__assume_ctx_lock(&tg->dl_bandwidth.dl_runtime_lock);
+		if (lockdep_is_held(dl_bw_lock_of_tg(tg))) {
+			__assume_ctx_lock(dl_bw_lock_of_tg(tg));
 			held = 1;
 		}
 
@@ -113,7 +113,7 @@ const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg)
 struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg)
 {
 	lockdep_assert_held(&rt_constraints_mutex);
-	lockdep_assert_held(&tg->dl_bandwidth.dl_runtime_lock);
+	lockdep_assert_held(dl_bw_lock_of_tg(tg));
 
 	return &tg->dl_bandwidth;
 }

@@ -3390,6 +3390,8 @@ static inline struct sched_dl_entity *dl_group_of(struct rt_rq *rt_rq)
 
 	return rt_rq->tg->dl_se[rq_of_rt_rq(rt_rq)->cpu];
 }
+
+#define dl_bw_lock_of_tg(tg) (&(tg)->dl_bandwidth.dl_runtime_lock)
 #else
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
@@ -3422,6 +3424,8 @@ static inline struct sched_dl_entity *dl_group_of(struct rt_rq *rt_rq)
 {
 	return NULL;
 }
+
+#define dl_bw_lock_of_tg(tg) ((raw_spinlock_t*)NULL)
 #endif
 
 DEFINE_LOCK_GUARD_2(double_rq_lock, struct rq,
