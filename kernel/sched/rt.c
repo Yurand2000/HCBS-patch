@@ -1315,7 +1315,7 @@ static int find_lowest_rq(struct task_struct *task)
 		lowest_mask = &mask;
 		cpumask_clear(lowest_mask);
 		for_each_cpu_and(cpu, cpu_online_mask, task->cpus_ptr) {
-			dl_se = task_rt_rq->tg->dl_se[cpu];
+			dl_se = dl_se_of_tg(task_rt_rq->tg, cpu);
 			rt_rq = &dl_se->my_q->rt;
 			prio = rt_rq->highest_prio.curr;
 
@@ -1448,7 +1448,7 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 
 		lowest_rq = cpu_rq(cpu);
 		if (dl_group) {
-			lowest_dl_se = rt_rq->tg->dl_se[cpu];
+			lowest_dl_se = dl_se_of_tg(rt_rq->tg, cpu);
 			lowest_rt_rq = &lowest_dl_se->my_q->rt;
 		} else {
 			lowest_rt_rq = &lowest_rq->rt;
@@ -1867,7 +1867,7 @@ group_sched:
 		if (!dl_group) {
 			src_rt_rq = &src_rq->rt;
 		} else {
-			src_dl_se = this_rt_rq->tg->dl_se[cpu];
+			src_dl_se = dl_se_of_tg(this_rt_rq->tg, cpu);
 			src_rt_rq = &src_dl_se->my_q->rt;
 
 			if (src_rt_rq->rt_nr_running <= 1 && !src_dl_se->dl_throttled)
