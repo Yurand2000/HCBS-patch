@@ -3717,7 +3717,8 @@ bool __checkparam_dl(const struct sched_attr *attr, bool allow_zero_runtime)
 		return true;
 
 	/* deadline != 0 */
-	if (attr->sched_deadline == 0)
+	if ((!allow_zero_runtime || attr->sched_runtime != 0) &&
+	    attr->sched_deadline == 0)
 		return false;
 
 	/*
@@ -3748,7 +3749,8 @@ bool __checkparam_dl(const struct sched_attr *attr, bool allow_zero_runtime)
 	max = (u64)READ_ONCE(sysctl_sched_dl_period_max) * NSEC_PER_USEC;
 	min = (u64)READ_ONCE(sysctl_sched_dl_period_min) * NSEC_PER_USEC;
 
-	if (period < min || period > max)
+	if ((!allow_zero_runtime || period != 0) &&
+	    (period < min || period > max))
 		return false;
 
 	return true;
