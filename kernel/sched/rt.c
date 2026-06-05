@@ -441,15 +441,16 @@ static void push_group_rt_tasks(struct rq *global_rq)
 	if (rt_rq->rt_nr_running <= 1 && !dl_group_of(rt_rq)->dl_throttled)
 		return;
 
-	push_rt_tasks(rq);
+	push_rt_rq_tasks(rt_rq);
 	rq_to_push_from(global_rq) = NULL;
 }
 
 static void pull_group_rt_task(struct rq *global_rq)
 {
 	struct rq *rq = rq_to_pull_to(global_rq);
+	struct rt_rq *rt_rq = &rq->rt;
 
-	pull_rt_task(rq);
+	pull_rt_rq_task(rt_rq);
 	rq_to_pull_to(global_rq) = NULL;
 }
 
@@ -1298,12 +1299,12 @@ static int find_lowest_rt_rq(struct task_struct *task)
 		if (sched_asym_cpucap_active()) {
 
 			ret = cpupri_find_fitness(&task_rq(task)->rd->cpupri,
-						task, lowest_mask,
-						rt_task_fits_capacity);
+						  task, lowest_mask,
+						  rt_task_fits_capacity);
 		} else {
 
 			ret = cpupri_find(&task_rq(task)->rd->cpupri,
-					task, lowest_mask);
+					  task, lowest_mask);
 		}
 
 		if (!ret)
@@ -1430,7 +1431,7 @@ static struct task_struct *pick_next_pushable_task(struct rt_rq *rt_rq)
 /* Will lock the rq it finds */
 static struct rt_rq *find_lock_lowest_rt_rq(struct task_struct *task, struct rt_rq *rt_rq)
 {
-	struct rq *lowest_rq, *rq = rq_of_rt_rq(rt_rq);
+	struct rq *lowest_rq, *rq = global_rq_of_rt_rq(rt_rq);
 	struct rt_rq *lowest_rt_rq;
 	struct sched_dl_entity *lowest_dl_se;
 	int tries, cpu;
@@ -1508,7 +1509,7 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq) {
 static int push_rt_rq_task(struct rt_rq *rt_rq, bool pull)
 {
 	struct task_struct *next_task;
-	struct rq *lowest_rq, *rq = rq_of_rt_rq(rt_rq);
+	struct rq *lowest_rq, *rq = global_rq_of_rt_rq(rt_rq);
 	struct rt_rq *lowest_rt_rq;
 	int ret = 0;
 	bool dl_group;
@@ -1543,7 +1544,7 @@ retry:
 		 * If the current task does not belong to the same task group
 		 * we cannot push it away.
 		 */
-		if (!dl_group && rq->donor->sched_task_group != rt_rq->tg)
+		if (dl_group && rq->donor->sched_task_group != rt_rq->tg)
 			return 0;
 
 		/*
@@ -1622,7 +1623,7 @@ retry:
 		goto retry;
 	}
 
-	lowest_rq = rq_of_rt_rq(lowest_rt_rq);
+	lowest_rq = global_rq_of_rt_rq(lowest_rt_rq);
 	move_queued_task_locked(rq, lowest_rq, next_task);
 	resched_curr(lowest_rq);
 	ret = 1;
@@ -1819,7 +1820,7 @@ void rto_push_irq_work_func(struct irq_work *work)
 
 static void pull_rt_rq_task(struct rt_rq *this_rt_rq)
 {
-	struct rq *this_rq = rq_of_rt_rq(this_rt_rq);
+	struct rq* this_rq = global_rq_of_rt_rq(this_rt_rq);
 	int this_cpu = this_rq->cpu, cpu;
 	bool resched = false;
 	struct task_struct *p, *push_task = NULL;
