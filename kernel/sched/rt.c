@@ -2658,6 +2658,7 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 	struct rt_schedulable_data *d = data;
 	struct task_group *child;
 	unsigned long total, sum;
+	u64 total_runtime, period, runtime;
 	u64 *periods, *runtimes;
 	bool has_runtime;
 	int i;
@@ -2726,29 +2727,70 @@ static int tg_rt_schedulable(struct task_group *tg, void *data)
 		}
 	}
 
+	/*
+	 * Ensure that all the CPUs have the same period.
+	 */
+	period = 0;
 	for_each_possible_cpu(i) {
-		total = to_ratio(periods[i], runtimes[i]);
-		sum = 0;
-		/*
-		 * The sum of our children's runtime should not exceed our own.
-		 */
-		list_for_each_entry_rcu(child, &tg->children, siblings) {
-			if (task_group_is_autogroup(child))
-				continue;
+		if (periods[i] == 0)
+			continue;
 
-			if (child == d->tg) {
-				sum += to_ratio(d->periods[i],
-						d->runtimes[i]);
-			} else {
-				sum += to_ratio(child->dl_bandwidth.periods[i],
-						child->dl_bandwidth.runtimes[i]);
-			}
-		}
-
-		if (sum > total) {
-			printk("tg_rt_schedulable fail at %d: children bw %lu > parent bw %lu", i, sum, total);
+		if (period == 0) {
+			period = periods[i];
+		} else if (period != periods[i]) {
+			printk("tg_rt_schedulable fail: cgroup period mismatch");
 			return -EINVAL;
 		}
+
+		/*
+		 * Nobody can have more than the global setting allows.
+		 */
+		if (to_ratio(periods[i], runtimes[i]) >
+		    to_ratio(global_rt_period(), global_rt_runtime())) {
+			printk("tg_rt_schedulable fail: root cgroup too much bw");
+			return -EINVAL;
+		}
+	}
+
+	total = 0, total_runtime = 0;
+	for_each_possible_cpu(i) {
+		if (runtimes[i] == RUNTIME_INF)
+			total_runtime += periods[i];
+		else
+			total_runtime += runtimes[i];
+	}
+	total = to_ratio(period, total_runtime);
+
+	sum = 0;
+	list_for_each_entry_rcu(child, &tg->children, siblings) {
+		if (task_group_is_autogroup(child))
+			continue;
+
+		total_runtime = 0, period = 0;
+		for_each_possible_cpu(i) {
+			if (child == d->tg) {
+				runtime = d->runtimes[i];
+				period = max(period, d->periods[i]);
+			} else {
+				runtime = child->dl_bandwidth.runtimes[i];
+				period = max(period, child->dl_bandwidth.periods[i]);
+			}
+
+			if (runtime == RUNTIME_INF)
+				total_runtime += period;
+			else
+				total_runtime += runtime;
+		}
+
+		sum += to_ratio(period, total_runtime);
+	}
+
+	/*
+	 * The sum of our children's runtime should not exceed our own.
+	 */
+	if (sum > total) {
+		printk("tg_rt_schedulable fail: children bw %lu > parent bw %lu", sum, total);
+		return -EINVAL;
 	}
 
 	return 0;
