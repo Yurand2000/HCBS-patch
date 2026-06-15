@@ -13,11 +13,11 @@ The repository work is organized in branches. The main branch, which contains th
 - **rt-cgroups**: the latest WIP for the HCBS patchset.
 - **submission-######-rt-cgroups**: HCBS submitted patches, at a given point in time (Example *submission-250929-rt-cgroups* refers to the RFC v3 submission made in September 29th, 2025).
 - **rt-cgroups-######**: a backup for the patchset at a given point in time (Example *rt-cgroup-250905* is a backup of September 9th, 2025).
+- **rt-cgroups-multi-######**: Latest working versions for the Multi-CPU feature, which may be possibly behind the latest **rt-cgroups** master.
 
 #### Other and Legacy branches:
 - **rt-cgroups-devel-######**: Work-in-progress code that is not anymore on the main WIP branch.
-- **rt-cgroups-multi-7.0.0-rc4**: Multi-CPU version for kernel version 7.0.0-rc4
-- **rt-cgroups-multi-250926**: Multi-CPU version for HCBS, yet to be implemented, latest update on September 26th, 2025.
+- **rt-cgroups-multi-7.0.0-rc4**: Multi-CPU version for kernel version 7.0.0-rc4. It is possibly buggy.
 - **rt-cgroups-tip-######**: HCBS but on the tip branch of the kernel, which is not available as a branch in the github's mirror of the kernel repo.
 - **submission-######-{#####}**: Old branches for minor submitted patches
     - **submission-######-fair-bw-fix** for the non-accepted fair bw fix, more at [lore.kernel.org](https://lore.kernel.org/all/20250903114448.664452-1-yurand2000@gmail.com/).
