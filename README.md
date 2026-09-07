@@ -23,9 +23,10 @@ The repository work is organized in branches. The main branch, which contains th
 
 #### Repository branches:
 - **github-workflow**: this utils branch.
-- **master**: the Linux kernel latest version.
-- **rt-cgroups**: the latest WIP for the HCBS patchset.
+- [**master**](https://github.com/Yurand2000/HCBS-patch/tree/master): the Linux kernel latest version.
+- [**rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/rt-cgroups): the latest WIP for the HCBS patchset.
 - **submission-######-rt-cgroups**: HCBS submitted patches, at a given point in time (Example *submission-250929-rt-cgroups* refers to the RFC v3 submission made in September 29th, 2025).
+    + [**submission-260608-rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/submission-260608-rt-cgroups) is the latest RFC v6 submission.
 - **rt-cgroups-######**: a backup for the patchset at a given point in time (Example *rt-cgroup-250905* is a backup of September 9th, 2025).
 - **rt-cgroups-multi-######**: Latest working versions for the Multi-CPU feature, which may be possibly behind the latest **rt-cgroups** master.
 
