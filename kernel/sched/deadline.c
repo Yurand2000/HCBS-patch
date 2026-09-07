@@ -1955,7 +1955,7 @@ int dl_server_apply_params(struct sched_dl_entity *dl_se, u64 runtime, u64 perio
 static int __dl_server_attach_bw_locked(struct sched_dl_entity *dl_se,
 					struct dl_bw *dl_b, int cpus)
 {
-	struct rq *rq = dl_se->rq;
+	struct rq *rq = rq_of_dl_se(dl_se);
 	unsigned long cap;
 
 	/*
@@ -1983,7 +1983,7 @@ static int __dl_server_attach_bw_locked(struct sched_dl_entity *dl_se,
 static void __dl_server_detach_bw_locked(struct sched_dl_entity *dl_se,
 					 struct dl_bw *dl_b, int cpus)
 {
-	struct rq *rq = dl_se->rq;
+	struct rq *rq = rq_of_dl_se(dl_se);
 
 	/*
 	 * If the server is still active (on_rq), dequeue it via
@@ -2028,7 +2028,7 @@ static void __dl_server_detach_bw_locked(struct sched_dl_entity *dl_se,
  */
 int dl_server_attach_bw(struct sched_dl_entity *dl_se)
 {
-	struct rq *rq = dl_se->rq;
+	struct rq *rq = rq_of_dl_se(dl_se);
 	int cpu = cpu_of(rq);
 	struct dl_bw *dl_b;
 	int cpus, ret;
@@ -2069,7 +2069,7 @@ int dl_server_attach_bw(struct sched_dl_entity *dl_se)
  */
 void dl_server_detach_bw(struct sched_dl_entity *dl_se)
 {
-	int cpu = cpu_of(dl_se->rq);
+	int cpu = cpu_of(rq_of_dl_se(dl_se));
 	struct dl_bw *dl_b;
 	int cpus;
 
@@ -2094,12 +2094,12 @@ void dl_server_detach_bw(struct sched_dl_entity *dl_se)
 int dl_server_swap_bw(struct sched_dl_entity *detach_se,
 		      struct sched_dl_entity *attach_se)
 {
-	struct rq *rq = detach_se->rq;
+	struct rq *rq = rq_of_dl_se(detach_se);
 	int cpu = cpu_of(rq);
 	struct dl_bw *dl_b;
 	int cpus, ret;
 
-	WARN_ON_ONCE(attach_se->rq != rq);
+	WARN_ON_ONCE(rq_of_dl_se(attach_se) != rq);
 
 	scoped_guard (raw_spinlock, &dl_bw_of(cpu)->lock) {
 		dl_b = dl_bw_of(cpu);
