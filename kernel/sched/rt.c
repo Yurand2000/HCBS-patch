@@ -278,6 +278,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		dl_se->dl_bw = to_ratio(dl_se->dl_period, dl_se->dl_runtime);
 		dl_se->dl_density = to_ratio(dl_se->dl_deadline, dl_se->dl_runtime);
 		dl_se->dl_server = 1;
+		dl_se->dl_bw_attached = 1;
 		dl_server_init(dl_se, &cpu_rq(i)->dl, s_rq, rt_server_pick);
 	}
 
