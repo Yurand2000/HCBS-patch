@@ -8149,13 +8149,6 @@ unsigned long effective_cpu_util(int cpu, unsigned long util_cfs,
 		 * - The minimum performance requirement for CFS and/or RT.
 		 */
 		*min = max(irq + cpu_bw_dl(rq), uclamp_rq_get(rq, UCLAMP_MIN));
-
-		/*
-		 * When an RT task is runnable and uclamp is not used, we must
-		 * ensure that the task will run at maximum compute capacity.
-		 */
-		if (!uclamp_is_used() && rt_rq_is_runnable(&rq->rt))
-			*min = max(*min, scale);
 	}
 
 	/*
@@ -8164,8 +8157,7 @@ unsigned long effective_cpu_util(int cpu, unsigned long util_cfs,
 	 * utilization (PELT windows are synchronized) we can directly add them
 	 * to obtain the CPU's actual utilization.
 	 */
-	util = util_cfs + cpu_util_rt(rq);
-	util += cpu_util_dl(rq);
+	util = cpu_bw_dl(rq);
 
 	/*
 	 * The maximum hint is a soft bandwidth requirement, which can be lower
