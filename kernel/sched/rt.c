@@ -2488,7 +2488,7 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 	 * then see if we can move to another run queue.
 	 */
 	if (task_on_rq_queued(p)) {
-		if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
+		if (p->nr_cpus_allowed > 1 && rt_rq_of_se(&p->rt)->overloaded)
 			rt_queue_push_tasks(rt_rq_of_se(&p->rt));
 		if (p->prio < rq->donor->prio && cpu_online(cpu_of(rq)))
 			resched_curr(rq);
