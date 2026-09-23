@@ -228,9 +228,11 @@ static void sugov_get_util(struct sugov_cpu *sg_cpu, unsigned long boost)
 	if (!scx_switched_all())
 		util += cpu_util_cfs_boost(sg_cpu->cpu);
 	util = effective_cpu_util(sg_cpu->cpu, util, &min, &max);
+trace_printk("sugov_get_util: cpu = %d, util = %lu (boost %lu), min = %lu, max = %lu\n", sg_cpu->cpu, util, boost, min, max);
 	util = max(util, boost);
 	sg_cpu->bw_min = min;
 	sg_cpu->util = sugov_effective_cpu_perf(sg_cpu->cpu, util, min, max);
+trace_printk("sugov_get_util: effective util = %lu\n", sg_cpu->util);
 }
 
 /**
@@ -438,6 +440,7 @@ static void sugov_update_single_freq(struct update_util_data *hook, u64 time,
 		sg_policy->cached_raw_freq = cached_freq;
 	}
 
+trace_printk("sugov_update_single_freq: cpu = %d, set frequency = %u\n", sg_cpu->cpu, next_f);
 	if (!sugov_update_next_freq(sg_policy, time, next_f))
 		return;
 
@@ -480,6 +483,7 @@ static void sugov_update_single_perf(struct update_util_data *hook, u64 time,
 	if (sugov_hold_freq(sg_cpu) && sg_cpu->util < prev_util)
 		sg_cpu->util = prev_util;
 
+trace_printk("sugov_update_single_perf: cpu = %d, set util = %lu, max = %lu\n", sg_cpu->cpu, sg_cpu->util, max_cap);
 	cpufreq_driver_adjust_perf(sg_cpu->cpu, sg_cpu->bw_min,
 				   sg_cpu->util, max_cap);
 
@@ -528,6 +532,7 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 		if (!sugov_update_next_freq(sg_policy, time, next_f))
 			goto unlock;
 
+trace_printk("sugov_update_shared: cpu mask = %*pbl, set frequency = %u\n", cpumask_pr_args(sg_policy->policy->cpus), next_f);
 		if (sg_policy->policy->fast_switch_enabled)
 			cpufreq_driver_fast_switch(sg_policy->policy, next_f);
 		else
