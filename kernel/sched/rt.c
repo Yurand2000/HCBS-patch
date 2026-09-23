@@ -609,16 +609,25 @@ static void __dequeue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flag
 
 static void enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 {
-	update_stats_enqueue_rt(rt_rq_of_se(rt_se), rt_se, flags);
+	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+
+	update_stats_enqueue_rt(rt_rq, rt_se, flags);
 
 	__enqueue_rt_entity(rt_se, flags);
+
+	cpufreq_update_util(rq_of_rt_rq(rt_rq), 0);
+
 }
 
 static void dequeue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 {
-	update_stats_dequeue_rt(rt_rq_of_se(rt_se), rt_se, flags);
+	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+
+	update_stats_dequeue_rt(rt_rq, rt_se, flags);
 
 	__dequeue_rt_entity(rt_se, flags);
+
+	cpufreq_update_util(rq_of_rt_rq(rt_rq), 0);
 }
 
 /*
