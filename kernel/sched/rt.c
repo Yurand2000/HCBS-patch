@@ -838,6 +838,9 @@ static void enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 
 	__enqueue_rt_entity(rt_se, flags);
 
+	if (is_dl_group((rt_rq)))
+		return;
+
 	cpufreq_update_util(rq_of_rt_rq(rt_rq), 0);
 
 }
@@ -849,6 +852,9 @@ static void dequeue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 	update_stats_dequeue_rt(rt_rq, rt_se, flags);
 
 	__dequeue_rt_entity(rt_se, flags);
+
+	if (is_dl_group((rt_rq)))
+		return;
 
 	cpufreq_update_util(rq_of_rt_rq(rt_rq), 0);
 }
