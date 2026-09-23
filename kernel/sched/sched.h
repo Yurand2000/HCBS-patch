@@ -3432,7 +3432,7 @@ static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
 	WARN_ON_ONCE(!rt_entity_is_task(rt_se));
 
-	return container_of_const(rt_se, struct task_struct, rt);
+	return container_of(rt_se, struct task_struct, rt);
 }
 
 static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
@@ -3460,12 +3460,12 @@ static inline struct rq *rq_of_rt_se(struct sched_rt_entity *rt_se)
 
 static inline struct task_struct *rt_task_of(struct sched_rt_entity *rt_se)
 {
-	return container_of_const(rt_se, struct task_struct, rt);
+	return container_of(rt_se, struct task_struct, rt);
 }
 
 static inline struct rq *rq_of_rt_rq(struct rt_rq *rt_rq)
 {
-	return container_of_const(rt_rq, struct rq, rt);
+	return container_of(rt_rq, struct rq, rt);
 }
 
 static inline struct rq *rq_of_rt_se(struct sched_rt_entity *rt_se)
