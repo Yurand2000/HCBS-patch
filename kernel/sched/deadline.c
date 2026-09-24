@@ -208,8 +208,8 @@ void __dl_add(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
 static inline u64 get_dl_groups_bw(void)
 {
 #ifdef CONFIG_RT_GROUP_SCHED
-	return to_ratio(root_task_group.dl_bandwidth.dl_period,
-			root_task_group.dl_bandwidth.dl_runtime);
+	const struct dl_bandwidth *dl_b = dl_bandwidth_read(&root_task_group);
+	return to_ratio(dl_b->dl_period, dl_b->dl_runtime);
 #else
 	return 0;
 #endif
