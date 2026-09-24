@@ -1926,13 +1926,10 @@ static void switching_to_rt(struct rq *rq, struct task_struct *p)
 	struct task_group *tg = p->sched_task_group;
 	int cpu = rq->cpu;
 
-	if (tg == &root_task_group)
+	if (!rt_group_sched_enabled() || tg == &root_task_group)
 		return;
 
 	guard(raw_spinlock_irqsave)(dl_bw_lock_of_tg(tg));
-	if (!rt_group_sched_enabled())
-		tg = &root_task_group;
-
 	p->rt.rt_rq = dl_bandwidth_read(tg)->active_context->rt_rq[cpu];
 }
 #else
