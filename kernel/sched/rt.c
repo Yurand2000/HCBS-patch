@@ -1083,10 +1083,11 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	if (is_dl_group(rt_rq_of_se(&p->rt)))
 		woken_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
-	if (is_dl_group(rt_rq_of_se(&donor->rt)))
-		donor_dl_se = dl_group_of(rt_rq_of_se(&donor->rt));
-	else if (task_has_dl_policy(donor))
+
+	if (task_has_dl_policy(donor))
 		donor_dl_se = &donor->dl;
+	else if (is_dl_group(rt_rq_of_se(&donor->rt)))
+		donor_dl_se = dl_group_of(rt_rq_of_se(&donor->rt));
 
 	if (woken_dl_se != NULL && donor_dl_se != NULL) {
 		if (woken_dl_se == donor_dl_se) {
