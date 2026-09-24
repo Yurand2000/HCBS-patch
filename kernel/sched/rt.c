@@ -266,6 +266,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 
 		init_rt_rq(&s_rq->rt);
 		s_rq->cpu = i;
+		s_rq->online = 1;
 		s_rq->rt.tg = tg;
 
 		init_dl_entity(dl_se);
