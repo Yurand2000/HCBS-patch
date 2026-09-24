@@ -10462,7 +10462,7 @@ static ssize_t cpu_max_write(struct kernfs_open_file *of,
 static int cpu_rt_max_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
-	long period_us, runtime_us;
+	u64 period_us, runtime_us;
 
 	tg_rt_bandwidth(tg, &period_us, &runtime_us);
 	cpu_period_quota_print(sf, period_us, runtime_us);
@@ -10472,7 +10472,7 @@ static int cpu_rt_max_show(struct seq_file *sf, void *v)
 static int cpu_rt_internal_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
-	long period_us, runtime_us;
+	u64 period_us, runtime_us;
 
 	tg_rt_internal_bandwidth(tg, &period_us, &runtime_us);
 	cpu_period_quota_print(sf, period_us, runtime_us);
@@ -10483,7 +10483,7 @@ static ssize_t cpu_rt_max_write(struct kernfs_open_file *of,
 			        char *buf, size_t nbytes, loff_t off)
 {
 	struct task_group *tg = css_tg(of_css(of));
-	u64 period_us, runtime_us;
+	u64 period_us = 0, runtime_us;
 	int ret;
 
 	ret = cpu_period_quota_parse(buf, &period_us, &runtime_us);
