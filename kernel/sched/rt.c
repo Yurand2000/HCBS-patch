@@ -2185,7 +2185,8 @@ struct tg_compute_children_bw_data {
 
 static int __tg_compute_children_bw(struct task_group *tg, void *data) {
 	struct tg_compute_children_bw_data *d = data;
-	const struct dl_bandwidth *dl_b = dl_bandwidth_read(tg);
+	const struct task_group *parent_active_context;
+	const struct dl_bandwidth *dl_b_parent, *dl_b = dl_bandwidth_read(tg);
 	u64 period, runtime;
 
 	/* Skip the current task group from the sum. */
@@ -2199,8 +2200,20 @@ static int __tg_compute_children_bw(struct task_group *tg, void *data) {
 		runtime = d->update.rt_runtime;
 	}
 
-	if (runtime == RUNTIME_INF ||
-	    dl_bandwidth_read(tg->parent)->active_context != d->active_context)
+	if (runtime == RUNTIME_INF)
+		return 0;
+
+	dl_b_parent = dl_bandwidth_read(tg->parent);
+	parent_active_context = dl_b_parent->active_context;
+	if (tg->parent == d->update.tg) {
+		if (dl_b_parent->dl_runtime != RUNTIME_INF &&
+		    d->update.rt_runtime == RUNTIME_INF)
+			parent_active_context = dl_bandwidth_read(tg->parent->parent)->active_context;
+		else if (d->update.rt_runtime != RUNTIME_INF)
+			parent_active_context = tg->parent;
+	}
+
+	if (parent_active_context != d->active_context)
 		return 0;
 
 	d->bw_sum += to_ratio(period, runtime);
