@@ -2087,7 +2087,10 @@ static int task_is_throttled_rt(struct task_struct *p, int cpu)
 	rt_rq = task_group(p)->rt_rq[cpu];
 	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
 
-	return dl_group_of(rt_rq)->dl_throttled;
+	if (is_dl_group(rt_rq))
+		return dl_group_of(rt_rq)->dl_throttled;
+	else
+		return 0;
 #else
 	return 0;
 #endif
