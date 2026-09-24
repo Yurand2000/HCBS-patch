@@ -140,7 +140,6 @@ void unregister_rt_sched_group(struct task_group *tg)
 void free_rt_sched_group(struct task_group *tg)
 {
 	int i;
-	unsigned long flags;
 
 	if (!rt_group_sched_enabled())
 		return;
@@ -163,9 +162,8 @@ void free_rt_sched_group(struct task_group *tg)
 		if (tg->dl_se[i]->dl_runtime)
 			dl_init_tg(tg->dl_se[i], 0, tg->dl_se[i]->dl_period);
 
-		raw_spin_rq_lock_irqsave(cpu_rq(i), flags);
 		hrtimer_cancel(&tg->dl_se[i]->dl_timer);
-		raw_spin_rq_unlock_irqrestore(cpu_rq(i), flags);
+		hrtimer_cancel(&tg->dl_se[i]->inactive_timer);
 		kfree(tg->dl_se[i]);
 
 		/* Free the local per-cpu runqueue */
@@ -181,7 +179,8 @@ static inline void __rt_rq_free(struct rt_rq **rt_rq)
 	int i;
 
 	for_each_possible_cpu(i) {
-		kfree(rq_of_rt_rq(rt_rq[i]));
+		if (rt_rq[i])
+			kfree(rq_of_rt_rq(rt_rq[i]));
 	}
 
 	kfree(rt_rq);
