@@ -1294,7 +1294,8 @@ static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 static int find_lowest_rt_rq(struct task_struct *task)
 {
 	struct sched_domain *sd;
-	struct cpumask mask, *lowest_mask;
+	cpumask_var_t mask __free(free_cpumask_var) = CPUMASK_VAR_NULL;
+	struct cpumask *lowest_mask;
 	struct sched_dl_entity *dl_se;
 	struct rt_rq *rt_rq, *task_rt_rq = rt_rq_of_se(&task->rt);
 	int cpu, this_cpu = smp_processor_id();
@@ -1329,9 +1330,11 @@ static int find_lowest_rt_rq(struct task_struct *task)
 		if (!ret)
 			return -1; /* No targets found */
 	} else {
+		if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+			return -ENOMEM;
 
 		lowest_prio = task->prio - 1;
-		lowest_mask = &mask;
+		lowest_mask = mask;
 		cpumask_clear(lowest_mask);
 		for_each_cpu_and(cpu, cpu_online_mask, task->cpus_ptr) {
 			dl_se = dl_se_of_tg(task_rt_rq->tg, cpu);
