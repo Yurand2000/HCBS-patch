@@ -2349,7 +2349,7 @@ static void tg_update_active_context(struct task_group *tg,
 }
 
 int tg_rt_bandwidth(struct task_group *tg,
-		    long *rt_period_us, long *rt_runtime_us)
+		    u64 *rt_period_us, u64 *rt_runtime_us)
 {
 	const struct dl_bandwidth *dl_b;
 
@@ -2369,7 +2369,7 @@ int tg_rt_bandwidth(struct task_group *tg,
 }
 
 int tg_rt_internal_bandwidth(struct task_group *tg,
-			     long *rt_period_us, long *rt_runtime_us)
+			     u64 *rt_period_us, u64 *rt_runtime_us)
 {
 	const struct dl_bandwidth *dl_b;
 
