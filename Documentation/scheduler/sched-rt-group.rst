@@ -253,11 +253,11 @@ The **SBF(t)** for a MPR model **u = <Pi, Theta, m'>** is::
 
              | 0                                       if t' < 0
              |
-  SBF_u(t) = | floor(t' / PI) * Theta
-             |   + max(0, m' * x - (m' * Pi - Theta)   if t' >= 0 and 1 <= x <= y
+  SBF_u(t) = | floor(t' / Pi) * Theta
+             |   + max(0, m' * x - (m' * Pi - Theta))  if t' >= 0 and 1 <= x <= y
              |
-             | floor(t' / PI) * Theta
-             |   + max(0, m' * x - (m' * Pi - Theta)   else
+             | floor(t' / Pi) * Theta
+             |   + max(0, m' * x - (m' * Pi - Theta))  else
              |   - (m' - beta)
 
 where::
@@ -332,7 +332,7 @@ The demand bound function from Bertogna et al. is only defined on a single time
 this is the minimum argument to demonstrate schedulability on global Fixed
 Priority.
 
-3.4.3 Putting it all togheter
+3.4.3 Putting it all together
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A component **C**, on **m'** processors, running a taskset **Tau = { tau_1 =
@@ -340,7 +340,7 @@ A component **C**, on **m'** processors, running a taskset **Tau = { tau_1 =
 schedulable under gFP using an MPR model **u = <Pi, Theta, m'>**, if for all
 tasks **tau_k in Tau**:
 
-  DBF_gFP(tau_k) <= SBF_u(D_K)
+  DBF_gFP(tau_k) <= SBF_u(D_k)
 
 3.5 From MPR to deadline servers
 --------------------------------
@@ -456,7 +456,7 @@ share the same bandwidth allocated to SCHED_DEADLINE tasks.
 4.3 Running real-time tasks in groups
 -------------------------------------
 
-To run tasks in real-time groups it is just necessary to change a tasks
+To run tasks in real-time groups it is just necessary to change a task's
 scheduling policy to SCHED_FIFO/SCHED_RR and migrate it into the group. If the
 group is not allowed to run real-time tasks because of incorrect configuration,
 either migrating a SCHED_FIFO/SCHED_RR task into the group or changing
@@ -504,3 +504,4 @@ than real-time workloads.
 The aforementioned behaviour differs from the preceding RT_GROUP_SCHED
 implementation, but this is necessary to give actual guarantees to the amount of
 bandwidth given to rt-cgroups.
+
