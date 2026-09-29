@@ -2904,6 +2904,14 @@ again:
 
 	if (dl_server(dl_se)) {
 		p = dl_se->server_pick_task(dl_se, rf);
+
+		/*
+		 * server_pick_task may drop the runqueue lock, so check if
+		 * something has shifted.
+		 */
+		if (pick_next_dl_entity(dl_rq) != dl_se)
+			goto again;
+
 		if (!p) {
 			dl_server_stop(dl_se);
 			goto again;
