@@ -3481,8 +3481,6 @@ static inline struct sched_dl_entity *dl_group_of(struct rt_rq *rt_rq)
 	return rt_rq->tg->dl_se[rq_of_rt_rq(rt_rq)->cpu];
 }
 
-#define rq_to_push_from(rq) ((rq)->rq_to_push_from)
-#define rq_to_pull_to(rq) ((rq)->rq_to_pull_to)
 #define dl_se_of_tg(tg, cpu) ((tg)->dl_se[(cpu)])
 #define dl_bw_lock_of_tg(tg) (&(tg)->dl_bandwidth.dl_runtime_lock)
 #else
