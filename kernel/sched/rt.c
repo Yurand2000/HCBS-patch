@@ -297,6 +297,7 @@ static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct 
 	if (!sched_rt_runnable(dl_se->my_q)) {
 		rq_unpin_lock(global_rq, rf);
 		pull_rt_task(rq_of_rt_rq(rt_rq));
+		update_rq_clock(global_rq);
 		rq_repin_lock(global_rq, rf);
 
 		if (!sched_rt_runnable(dl_se->my_q))
