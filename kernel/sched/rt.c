@@ -372,6 +372,28 @@ static void pull_rt_task(struct rq *);
 static void push_group_rt_tasks(struct rq *);
 static void pull_group_rt_task(struct rq *);
 
+#define rq_queue_field_push(global_rq, new_rq, field)		\
+	do {							\
+		(new_rq)->field = (global_rq)->field;		\
+		(global_rq)->field = (new_rq);			\
+	} while (0)
+
+#define rq_queue_field_pop(global_rq, field)			\
+	({							\
+		struct rq *__head = (global_rq)->field;		\
+		if (__head) {					\
+			(global_rq)->field = __head->field;	\
+			__head->field = NULL;			\
+		}						\
+		__head;						\
+	})
+
+#define push_rq_to_push_from(global_rq, new_rq) rq_queue_field_push((global_rq), (new_rq), rq_to_push_from)
+#define pop_rq_to_push_from(global_rq) rq_queue_field_pop((global_rq), rq_to_push_from)
+
+#define push_rq_to_pull_to(global_rq, new_rq) rq_queue_field_push((global_rq), (new_rq), rq_to_pull_to)
+#define pop_rq_to_pull_to(global_rq) rq_queue_field_pop((global_rq), rq_to_pull_to)
+
 static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 {
 	struct rq *rq = rq_of_rt_rq(rt_rq);
@@ -387,10 +409,7 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 				       push_rt_tasks);
 	} else {
 
-		if (rq_to_push_from(global_rq))
-			return;
-
-		rq_to_push_from(global_rq) = rq;
+		push_rq_to_push_from(global_rq, rq);
 		queue_balance_callback(global_rq,
 				       &per_cpu(rt_group_push_head, global_rq->cpu),
 				       push_group_rt_tasks);
@@ -411,10 +430,10 @@ static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 	} else {
 
 		dl_se = dl_group_of(rt_rq);
-		if (dl_se->dl_throttled || rq_to_pull_to(global_rq))
+		if (dl_se->dl_throttled)
 			return;
 
-		rq_to_pull_to(global_rq) = rq;
+		push_rq_to_pull_to(global_rq, rq);
 		queue_balance_callback(global_rq,
 				       &per_cpu(rt_group_pull_head, global_rq->cpu),
 				       pull_group_rt_task);
@@ -435,23 +454,27 @@ static void pull_rt_task(struct rq *global_rq) {
 
 static void push_group_rt_tasks(struct rq *global_rq)
 {
-	struct rq *rq = rq_to_push_from(global_rq);
-	struct rt_rq *rt_rq = &rq->rt;
+	struct rq *rq;
 
-	if (rt_rq->rt_nr_running <= 1 && !dl_group_of(rt_rq)->dl_throttled)
-		return;
+	while ((rq = pop_rq_to_push_from(global_rq))) {
+		struct rt_rq *rt_rq = &rq->rt;
 
-	push_rt_rq_tasks(rt_rq);
-	rq_to_push_from(global_rq) = NULL;
+		if (rt_rq->rt_nr_running <= 1 && !dl_group_of(rt_rq)->dl_throttled)
+			continue;
+
+		push_rt_rq_tasks(rt_rq);
+	}
 }
 
 static void pull_group_rt_task(struct rq *global_rq)
 {
-	struct rq *rq = rq_to_pull_to(global_rq);
-	struct rt_rq *rt_rq = &rq->rt;
+	struct rq *rq;
 
-	pull_rt_rq_task(rt_rq);
-	rq_to_pull_to(global_rq) = NULL;
+	while ((rq = pop_rq_to_pull_to(global_rq))) {
+		struct rt_rq *rt_rq = &rq->rt;
+
+		pull_rt_rq_task(rt_rq);
+	}
 }
 
 static void enqueue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
