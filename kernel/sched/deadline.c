@@ -1638,7 +1638,7 @@ static void update_curr_dl_se(struct rq *rq, struct sched_dl_entity *dl_se, s64 
 		return;
 
 	scaled_delta_exec = delta_exec;
-	if (!dl_server(dl_se))
+	if (!dl_server(dl_se) || !dl_se->dl_freq_invariant)
 		scaled_delta_exec = dl_scaled_delta_exec(rq, dl_se, delta_exec);
 
 	dl_se->runtime -= scaled_delta_exec;
@@ -2032,6 +2032,7 @@ void sched_init_dl_servers(void)
 		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 1));
 
 		dl_se->dl_defer = 1;
+		dl_se->dl_freq_invariant = 1;
 		setup_new_dl_entity(dl_se);
 
 #ifdef CONFIG_SCHED_CLASS_EXT
@@ -2043,6 +2044,7 @@ void sched_init_dl_servers(void)
 		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 1));
 
 		dl_se->dl_defer = 1;
+		dl_se->dl_freq_invariant = 1;
 		setup_new_dl_entity(dl_se);
 #endif
 	}
@@ -3885,6 +3887,7 @@ static void __dl_clear_params(struct sched_dl_entity *dl_se)
 	dl_se->dl_defer			= 0;
 	dl_se->dl_defer_running		= 0;
 	dl_se->dl_defer_armed		= 0;
+	dl_se->dl_freq_invariant	= 0;
 
 #ifdef CONFIG_RT_MUTEXES
 	dl_se->pi_se			= dl_se;

@@ -698,6 +698,9 @@ struct sched_dl_entity {
 	 * running, skipping the defer phase.
 	 *
 	 * @dl_defer_idle tracks idle state
+	 *
+	 * @dl_freq_invariant tells if this server's runtime must NOT be scaled
+	 * by the CPU's frequency and capacity.
 	 */
 	unsigned int			dl_throttled      : 1;
 	unsigned int			dl_yielded        : 1;
@@ -709,6 +712,7 @@ struct sched_dl_entity {
 	unsigned int			dl_defer_armed	  : 1;
 	unsigned int			dl_defer_running  : 1;
 	unsigned int			dl_defer_idle     : 1;
+	unsigned int			dl_freq_invariant : 1;
 
 	/*
 	 * Bandwidth enforcement timer. Each -deadline task has its
