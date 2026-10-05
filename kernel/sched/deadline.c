@@ -127,14 +127,17 @@ static inline struct dl_bw *dl_bw_of(int i)
 	return &cpu_rq(i)->rd->dl_bw;
 }
 
+static inline int __dl_bw_cpus(const struct cpumask *mask)
+{
+	return cpumask_weight_and(mask, cpu_active_mask);
+}
+
 static inline int dl_bw_cpus(int i)
 {
-	struct root_domain *rd = cpu_rq(i)->rd;
-
 	RCU_LOCKDEP_WARN(!rcu_read_lock_sched_held(),
 			 "sched RCU must be held");
 
-	return cpumask_weight_and(rd->span, cpu_active_mask);
+	return __dl_bw_cpus(cpu_rq(i)->rd->span);
 }
 
 static inline unsigned long __dl_bw_capacity(const struct cpumask *mask)
@@ -216,11 +219,11 @@ static inline u64 get_dl_groups_bw(void)
 }
 
 static inline bool
-__dl_overflow(struct dl_bw *dl_b, unsigned long cap, u64 old_bw, u64 new_bw)
+__dl_overflow(struct dl_bw *dl_b, unsigned long cap, int cpus, u64 old_bw, u64 new_bw)
 {
 	return dl_b->bw != -1 &&
 	       cap_scale(dl_b->bw, cap) < dl_b->total_bw - old_bw + new_bw
-					+ cap_scale(get_dl_groups_bw(), cap);
+					+ get_dl_groups_bw() * cpus;
 }
 
 static inline
@@ -1948,7 +1951,7 @@ int dl_server_apply_params(struct sched_dl_entity *dl_se, u64 runtime, u64 perio
 	cpus = dl_bw_cpus(cpu);
 	cap = dl_bw_capacity(cpu);
 
-	if (__dl_overflow(dl_b, cap, old_bw, new_bw))
+	if (__dl_overflow(dl_b, cap, cpus, old_bw, new_bw))
 		return -EBUSY;
 
 	if (init) {
@@ -1995,7 +1998,7 @@ static int __dl_server_attach_bw_locked(struct sched_dl_entity *dl_se,
 	 */
 	if (cpu_active(cpu_of(rq))) {
 		cap = dl_bw_capacity(cpu_of(rq));
-		if (__dl_overflow(dl_b, cap, 0, dl_se->dl_bw))
+		if (__dl_overflow(dl_b, cap, cpus, 0, dl_se->dl_bw))
 			return -EBUSY;
 		__dl_add(dl_b, dl_se->dl_bw, cpus);
 	}
@@ -3739,8 +3742,8 @@ int sched_dl_global_validate(void)
 		cpus = dl_bw_cpus(cpu);
 
 		raw_spin_lock_irqsave(&dl_b->lock, flags);
-		if (new_bw * cpus < dl_b->total_bw +
-				    cap_scale(dl_groups_root, cap))
+		if (cap_scale(new_bw, cap) < dl_b->total_bw +
+					     dl_groups_root * cpus)
 			ret = -EBUSY;
 		raw_spin_unlock_irqrestore(&dl_b->lock, flags);
 
@@ -3834,13 +3837,13 @@ int sched_dl_overflow(struct task_struct *p, int policy,
 	cap = dl_bw_capacity(cpu);
 
 	if (dl_policy(policy) && !task_has_dl_policy(p) &&
-	    !__dl_overflow(dl_b, cap, 0, new_bw)) {
+	    !__dl_overflow(dl_b, cap, cpus, 0, new_bw)) {
 		if (hrtimer_active(&p->dl.inactive_timer))
 			__dl_sub(dl_b, p->dl.dl_bw, cpus);
 		__dl_add(dl_b, new_bw, cpus);
 		err = 0;
 	} else if (dl_policy(policy) && task_has_dl_policy(p) &&
-		   !__dl_overflow(dl_b, cap, p->dl.dl_bw, new_bw)) {
+		   !__dl_overflow(dl_b, cap, cpus, p->dl.dl_bw, new_bw)) {
 		/*
 		 * XXX this is slightly incorrect: when the task
 		 * utilization decreases, we should delay the total
@@ -4018,13 +4021,14 @@ int dl_cpuset_cpumask_can_shrink(const struct cpumask *cur,
 {
 	unsigned long flags, cap;
 	struct dl_bw *cur_dl_b;
-	int ret = 1;
+	int cpus, ret = 1;
 
 	rcu_read_lock_sched();
 	cur_dl_b = dl_bw_of(cpumask_any(cur));
 	cap = __dl_bw_capacity(trial);
+	cpus = __dl_bw_cpus(trial);
 	raw_spin_lock_irqsave(&cur_dl_b->lock, flags);
-	if (__dl_overflow(cur_dl_b, cap, 0, 0))
+	if (__dl_overflow(cur_dl_b, cap, cpus, 0, 0))
 		ret = 0;
 	raw_spin_unlock_irqrestore(&cur_dl_b->lock, flags);
 	rcu_read_unlock_sched();
@@ -4041,6 +4045,7 @@ enum dl_bw_request {
 static int dl_bw_manage(enum dl_bw_request req, int cpu, u64 dl_bw)
 {
 	unsigned long flags, cap;
+	int cpus;
 	struct dl_bw *dl_b;
 	bool overflow = 0;
 	u64 dl_server_bw = 0;
@@ -4050,12 +4055,13 @@ static int dl_bw_manage(enum dl_bw_request req, int cpu, u64 dl_bw)
 	raw_spin_lock_irqsave(&dl_b->lock, flags);
 
 	cap = dl_bw_capacity(cpu);
+	cpus = dl_bw_cpus(cpu);
 	switch (req) {
 	case dl_bw_req_free:
 		__dl_sub(dl_b, dl_bw, dl_bw_cpus(cpu));
 		break;
 	case dl_bw_req_alloc:
-		overflow = __dl_overflow(dl_b, cap, 0, dl_bw);
+		overflow = __dl_overflow(dl_b, cap, cpus, 0, dl_bw);
 
 		if (!overflow) {
 			/*
@@ -4064,7 +4070,7 @@ static int dl_bw_manage(enum dl_bw_request req, int cpu, u64 dl_bw)
 			 * We will free resources in the source root_domain
 			 * later on (see set_cpus_allowed_dl()).
 			 */
-			__dl_add(dl_b, dl_bw, dl_bw_cpus(cpu));
+			__dl_add(dl_b, dl_bw, cpus);
 		}
 		break;
 	case dl_bw_req_deactivate:
@@ -4094,8 +4100,8 @@ static int dl_bw_manage(enum dl_bw_request req, int cpu, u64 dl_bw)
 			 * wise thing to do. As said above, cpu is not offline
 			 * yet, so account for that.
 			 */
-			if (dl_bw_cpus(cpu) - 1)
-				overflow = __dl_overflow(dl_b, cap, dl_server_bw, 0);
+			if (cpus - 1)
+				overflow = __dl_overflow(dl_b, cap, cpus, dl_server_bw, 0);
 			else
 				overflow = 1;
 		}
