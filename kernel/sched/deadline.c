@@ -342,7 +342,7 @@ void dl_init_tg(struct sched_dl_entity *dl_se, u64 rt_runtime, u64 rt_period)
 	int is_active;
 	u64 new_bw;
 
-	guard(raw_spin_rq_lock_irq)(rq);
+	guard(rq_lock_irq)(rq);
 	is_active = dl_se->my_q->rt.rt_nr_running > 0;
 
 	update_rq_clock(rq);

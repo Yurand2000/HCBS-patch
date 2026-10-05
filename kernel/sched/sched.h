@@ -2106,10 +2106,6 @@ static inline struct rq *_this_rq_lock_irq(struct rq_flags *rf) __acquires_ret
 	return rq;
 }
 
-DEFINE_LOCK_GUARD_1(raw_spin_rq_lock_irq, struct rq,
-		    raw_spin_rq_lock_irq(_T->lock),
-		    raw_spin_rq_unlock_irq(_T->lock))
-
 #ifdef CONFIG_NUMA
 
 enum numa_topology_type {
