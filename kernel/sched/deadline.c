@@ -361,25 +361,26 @@ u64 dl_cookie;
 #ifdef CONFIG_RT_GROUP_SCHED
 int dl_check_tg(unsigned long total)
 {
-	int which_cpu;
-	int cap;
+	int cpu, cpus, cap;
 	struct dl_bw *dl_b;
 	u64 gen = ++dl_cookie;
 
 	lockdep_assert_held(&sched_domains_mutex);
 	lockdep_assert_held(&sched_rt_handler_mutex);
 
-	for_each_possible_cpu(which_cpu) {
+	for_each_possible_cpu(cpu) {
 		guard(rcu_sched)();
 
-		if (!dl_bw_visited(which_cpu, gen)) {
-			cap = dl_bw_capacity(which_cpu);
-			dl_b = dl_bw_of(which_cpu);
+		if (!dl_bw_visited(cpu, gen)) {
+			cap = dl_bw_capacity(cpu);
+			cpus = dl_bw_cpus(cpu);
+			dl_b = dl_bw_of(cpu);
 
 			guard(raw_spinlock_irqsave)(&dl_b->lock);
 
 			if (dl_b->bw != -1 &&
-			    cap_scale(dl_b->bw, cap) < dl_b->total_bw + cap_scale(total, cap))
+			    cap_scale(dl_b->bw, cap) < dl_b->total_bw +
+						       total * cpus)
 				return 0;
 		}
 
