@@ -81,6 +81,8 @@ extern void cpuset_cpus_allowed_locked(struct task_struct *p, struct cpumask *ma
 extern void cpuset_cpus_allowed(struct task_struct *p, struct cpumask *mask);
 extern bool cpuset_cpus_allowed_fallback(struct task_struct *p);
 extern int cpuset_num_cpus(struct cgroup *cgroup);
+extern void cpuset_effective_cpus(struct cgroup *cgroup, struct cpumask *mask);
+extern int cpuset_can_change(struct cgroup *cgroup);
 extern nodemask_t cpuset_mems_allowed(struct task_struct *p);
 #define cpuset_current_mems_allowed (current->mems_allowed)
 void cpuset_init_current_mems_allowed(void);
