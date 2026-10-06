@@ -2482,6 +2482,10 @@ static int update_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 	if (cpumask_equal(cs->cpus_allowed, trialcs->cpus_allowed))
 		return 0;
 
+	/* Disallow change if subtree has any allocated rt-cgroup */
+	if (!cpuset_can_change(cs->css.cgroup))
+		return -EINVAL;
+
 	compute_trialcs_excpus(trialcs, cs);
 	trialcs->prs_err = PERR_NONE;
 
@@ -2541,6 +2545,10 @@ static int update_exclusive_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 	/* Nothing to do if the CPUs didn't change */
 	if (cpumask_equal(cs->exclusive_cpus, trialcs->exclusive_cpus))
 		return 0;
+
+	/* Disallow change if subtree has any allocated rt-cgroup */
+	if (!cpuset_can_change(cs->css.cgroup))
+		return -EINVAL;
 
 	/*
 	 * Reject the change if there is exclusive CPUs conflict with
@@ -3536,6 +3544,10 @@ static ssize_t cpuset_partition_write(struct kernfs_open_file *of, char *buf,
 	else
 		return -EINVAL;
 
+	/* Disallow change if subtree has any allocated rt-cgroup */
+	if (!cpuset_can_change(cs->css.cgroup))
+		return -EINVAL;
+
 	mutex_lock(&cpuset_top_mutex);
 	cpus_read_lock();
 	wait_attach_done_lock();
@@ -4319,6 +4331,25 @@ int cpuset_num_cpus(struct cgroup *cgrp)
 	}
 
 	return nr;
+}
+
+void cpuset_effective_cpus(struct cgroup *cgrp, struct cpumask *mask)
+{
+        struct cpuset *cs;
+
+        if (!is_in_v2_mode()) {
+                cpumask_copy(mask, cpu_online_mask);
+		return;
+        }
+
+	guard(rcu)();
+        cs = css_cs(cgroup_e_css(cgrp, &cpuset_cgrp_subsys));
+	if (!cs) {
+                cpumask_copy(mask, cpu_online_mask);
+		return;
+	}
+
+	cpumask_copy(mask, cs->effective_cpus);
 }
 
 void __init cpuset_init_current_mems_allowed(void)

@@ -592,14 +592,26 @@ static inline int is_leftmost(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq
 
 static void init_dl_rq_bw_ratio(struct dl_rq *dl_rq);
 
+int alloc_dl_bandwidth(struct dl_bandwidth *dl_b) {
+	cpumask_var_t mask __free(free_cpumask_var) = CPUMASK_VAR_NULL;
+	if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+		return 0;
+
+	return 1;
+}
+
+void free_dl_bandwidth(struct dl_bandwidth *dl_b) {
+	free_cpumask_var(dl_b->active_mask);
+}
+
 void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime,
 		       struct task_group *active_context)
 {
 	raw_spin_lock_init(&dl_b->dl_runtime_lock);
 	dl_b->dl_period = period;
 	dl_b->dl_runtime = runtime;
-	dl_b->dl_internal_runtime = 0;
 	dl_b->active_context = active_context;
+	cpumask_clear(dl_b->active_mask);
 }
 
 

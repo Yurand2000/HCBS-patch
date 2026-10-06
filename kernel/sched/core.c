@@ -10495,6 +10495,19 @@ static void __maybe_unused cpu_period_quota_print(struct seq_file *sf,
 	seq_printf(sf, " %ld\n", period);
 }
 
+static void __maybe_unused cpu_period_quota_single_print(struct seq_file *sf, int cpu,
+							 long period, long quota)
+{
+	seq_printf(sf, "%d ", cpu);
+
+	if (quota < 0)
+		seq_puts(sf, "runtime=max");
+	else
+		seq_printf(sf, "runtime=%ld", quota);
+
+	seq_printf(sf, " period=%ld\n", period);
+}
+
 /* caller should put the current value in *@periodp before calling */
 static int __maybe_unused cpu_period_quota_parse(char *buf, u64 *period_us_p,
 						 u64 *quota_us_p)
@@ -10555,9 +10568,12 @@ static int cpu_rt_internal_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
 	u64 period_us, runtime_us;
+	int cpu;
 
-	tg_rt_internal_bandwidth(tg, &period_us, &runtime_us);
-	cpu_period_quota_print(sf, period_us, runtime_us);
+	for_each_possible_cpu(cpu) {
+		tg_rt_internal_bandwidth(tg, cpu, &period_us, &runtime_us);
+		cpu_period_quota_single_print(sf, cpu, period_us, runtime_us);
+	}
 	return 0;
 }
 

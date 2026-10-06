@@ -316,8 +316,8 @@ struct rt_prio_array {
 struct dl_bandwidth {
 	raw_spinlock_t		dl_runtime_lock;
 	u64			dl_runtime;
-	u64			dl_internal_runtime;
 	u64			dl_period;
+	cpumask_var_t		active_mask;
 	struct task_group	*active_context;
 };
 
@@ -585,7 +585,7 @@ extern bool cfs_task_bw_constrained(struct task_struct *p);
 
 extern int tg_rt_bandwidth(struct task_group *tg,
 			   u64 *rt_period_us, u64 *rt_runtime_us);
-extern int tg_rt_internal_bandwidth(struct task_group *tg,
+extern int tg_rt_internal_bandwidth(struct task_group *tg, int cpu,
 				    u64 *rt_period_us, u64 *rt_runtime_us);
 extern int tg_set_rt_bandwidth(struct task_group *tg,
 			       u64 rt_period_us, u64 rt_runtime_us);
@@ -3001,6 +3001,11 @@ extern void init_sched_fair_class(void);
 extern void resched_curr(struct rq *rq);
 extern void resched_curr_lazy(struct rq *rq);
 extern void resched_cpu(int cpu);
+
+extern int alloc_dl_bandwidth(struct dl_bandwidth *dl_b);
+extern void free_dl_bandwidth(struct dl_bandwidth *dl_b);
+
+DEFINE_FREE(dl_bandwidth_free, struct dl_bandwidth *, if (_T) free_dl_bandwidth(_T))
 
 extern void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime,
 			      struct task_group *active_context);
