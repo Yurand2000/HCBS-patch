@@ -3038,7 +3038,6 @@ extern void init_cfs_throttle_work(struct task_struct *p);
 #define MAX_BW			((1ULL << MAX_BW_BITS) - 1)
 
 extern u64 to_ratio(u64 period, u64 runtime);
-extern u64 from_ratio(u64 period, u64 bw);
 
 extern void init_entity_runnable_average(struct sched_entity *se);
 extern void post_init_entity_util_avg(struct task_struct *p);
