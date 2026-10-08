@@ -2180,10 +2180,11 @@ struct tg_update_data {
 struct tg_compute_children_bw_data {
 	struct tg_update_data update;
 	struct task_group *active_context;
-	u64 bw_sum;
+	u64 period;
+	u64 runtime_sum;
 };
 
-static int __tg_compute_children_bw(struct task_group *tg, void *data) {
+static int __tg_compute_children_runtime(struct task_group *tg, void *data) {
 	struct tg_compute_children_bw_data *d = data;
 	const struct task_group *parent_active_context;
 	const struct dl_bandwidth *dl_b_parent, *dl_b = dl_bandwidth_read(tg);
@@ -2199,8 +2200,7 @@ static int __tg_compute_children_bw(struct task_group *tg, void *data) {
 		period = d->update.rt_period;
 		runtime = d->update.rt_runtime;
 	}
-
-	if (runtime == RUNTIME_INF)
+	if (runtime == RUNTIME_INF || period == 0)
 		return 0;
 
 	dl_b_parent = dl_bandwidth_read(tg->parent);
@@ -2216,26 +2216,25 @@ static int __tg_compute_children_bw(struct task_group *tg, void *data) {
 	if (parent_active_context != d->active_context)
 		return 0;
 
-	d->bw_sum += to_ratio(period, runtime);
+	d->runtime_sum += mul_u64_u64_div_u64(runtime, d->period, period);
 	return 0;
 }
 
-static unsigned long tg_compute_children_bw(struct task_group *tg,
-					    struct tg_update_data *data)
+static u64
+tg_compute_children_runtime(struct task_group *tg,
+			    u64 normalization_period,
+			    struct tg_update_data *data)
 {
 	struct tg_compute_children_bw_data sum_data = {
 		.active_context = tg,
-		.bw_sum = 0,
-		.update = (struct tg_update_data) {
-			.tg = data->tg,
-			.rt_period  = data->rt_period,
-			.rt_runtime = data->rt_runtime,
-		}
+		.period = normalization_period,
+		.runtime_sum = 0,
+		.update = *data,
 	};
 
 	lockdep_assert(rcu_read_lock_held());
-	walk_tg_tree_from(tg, __tg_compute_children_bw, tg_nop, &sum_data);
-	return sum_data.bw_sum;
+	walk_tg_tree_from(tg, __tg_compute_children_runtime, tg_nop, &sum_data);
+	return sum_data.runtime_sum;
 }
 
 struct rt_schedulable_data {
@@ -2296,7 +2295,8 @@ static int __tg_rt_schedulable(struct task_group *tg, void *data)
 	 * The sum of our children's runtime, plus our own bw, should not
 	 * exceed our own max.
 	 */
-	sum = tg_compute_children_bw(tg, &d->update);
+	total = runtime;
+	sum = tg_compute_children_runtime(tg, period, &d->update);
 	if (sum > total)
 		return -EINVAL;
 
@@ -2304,7 +2304,7 @@ static int __tg_rt_schedulable(struct task_group *tg, void *data)
 	 * Compute remaining runtime
 	 */
 	if (tg == d->update.tg)
-		d->rt_runtime_remainder = from_ratio(period, total - sum);
+		d->rt_runtime_remainder = total - sum;
 
 	return 0;
 }
@@ -2371,12 +2371,10 @@ int tg_rt_bandwidth(struct task_group *tg,
 
 	*rt_runtime_us = -1;
 	if (dl_b->dl_runtime != RUNTIME_INF) {
-		*rt_runtime_us = dl_b->dl_runtime;
-		do_div(*rt_runtime_us, NSEC_PER_USEC);
+		*rt_runtime_us = div64_u64(dl_b->dl_runtime, NSEC_PER_USEC);
 	}
 
-	*rt_period_us = dl_b->dl_period;
-	do_div(*rt_period_us, NSEC_PER_USEC);
+	*rt_period_us = div64_u64(dl_b->dl_period, NSEC_PER_USEC);
 
 	return 0;
 }
@@ -2390,10 +2388,9 @@ int tg_rt_internal_bandwidth(struct task_group *tg,
 	dl_b = dl_bandwidth_read(tg);
 
 	*rt_runtime_us = dl_b->dl_internal_runtime;
-	do_div(*rt_runtime_us, NSEC_PER_USEC);
+	*rt_runtime_us = DIV64_U64_ROUND_CLOSEST(*rt_runtime_us, NSEC_PER_USEC);
 
-	*rt_period_us = dl_b->dl_period;
-	do_div(*rt_period_us, NSEC_PER_USEC);
+	*rt_period_us = div64_u64(dl_b->dl_period, NSEC_PER_USEC);
 
 	return 0;
 }
@@ -2406,7 +2403,7 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	struct dl_bandwidth *dl_b;
 	u64 rt_period, rt_runtime, old_rt_runtime;
 	u64 rt_actual_runtime = 0;
-	u64 bw, children_bw;
+	u64 runtime, children_runtime;
 	struct sched_attr attr;
 	int err, i;
 
@@ -2513,11 +2510,11 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(parent_ctx)) {
 		dl_b = dl_bandwidth_write(parent_ctx);
 
-		bw = to_ratio(dl_b->dl_period, dl_b->dl_runtime);
-		children_bw = tg_compute_children_bw(parent_ctx, &update);
+		runtime = dl_b->dl_runtime;
+		children_runtime = tg_compute_children_runtime(parent_ctx, dl_b->dl_period, &update);
 
 		rt_period = dl_b->dl_period;
-		rt_actual_runtime = from_ratio(rt_period, bw - children_bw);
+		rt_actual_runtime = runtime - children_runtime;
 		dl_b->dl_internal_runtime = rt_actual_runtime;
 	}
 
