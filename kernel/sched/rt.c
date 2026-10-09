@@ -2382,11 +2382,25 @@ static int tg_subtree_has_rt_tasks(struct task_group *tg) {
 }
 
 static inline u64 tg_cpu_period(const struct dl_bandwidth *dl_b, int cpu) {
-	return cpumask_test_cpu(cpu, dl_b->active_mask) ? dl_b->dl_period : 0;
+	u64 period;
+
+	if (dl_b->dl_period_overrides[cpu] == RUNTIME_INF)
+		period = dl_b->dl_period;
+	else
+		period = dl_b->dl_period_overrides[cpu];
+
+	return cpumask_test_cpu(cpu, dl_b->active_mask) ? period : 0;
 }
 
 static inline u64 tg_cpu_runtime(const struct dl_bandwidth *dl_b, int cpu) {
-	return cpumask_test_cpu(cpu, dl_b->active_mask) ? dl_b->dl_runtime : 0;
+	u64 runtime;
+
+	if (dl_b->dl_runtime_overrides[cpu] == RUNTIME_INF)
+		runtime = dl_b->dl_runtime;
+	else
+		runtime = dl_b->dl_runtime_overrides[cpu];
+
+	return cpumask_test_cpu(cpu, dl_b->active_mask) ? runtime : 0;
 }
 
 struct tg_update_data {
@@ -2397,6 +2411,7 @@ struct tg_update_data {
 struct tg_compute_children_bw_data {
 	struct tg_update_data update;
 	struct task_group *active_context;
+	const struct cpumask *mask;
 	u64 *rt_runtime_sum;
 };
 
@@ -2435,7 +2450,7 @@ static int __tg_compute_children_runtime(struct task_group *tg, void *data) {
 	if (parent_active_context != d->active_context)
 		return 0;
 
-	for_each_possible_cpu(cpu) {
+	for_each_cpu(cpu, d->mask) {
 		reference_period = tg_cpu_period(reference_dl_b, cpu);
 		period = tg_cpu_period(dl_b, cpu);
 		runtime = tg_cpu_runtime(dl_b, cpu);
@@ -2449,11 +2464,13 @@ static int __tg_compute_children_runtime(struct task_group *tg, void *data) {
 
 static void tg_compute_children_runtime(struct task_group *tg,
 					struct tg_update_data *data,
+					const struct cpumask *mask,
 					u64 *sum_runtime)
 {
 	struct tg_compute_children_bw_data sum_data = {
 		.active_context = tg,
 		.rt_runtime_sum = sum_runtime,
+		.mask = mask,
 		.update = *data,
 	};
 
@@ -2489,8 +2506,9 @@ static int __tg_rt_schedulable(struct task_group *tg, void *data)
 	/*
 	 * Cannot have more runtime than the period.
 	 */
-	if (dl_b->dl_runtime > dl_b->dl_period)
-		return -EINVAL;
+	for_each_possible_cpu(cpu)
+		if (tg_cpu_runtime(dl_b, cpu) > tg_cpu_period(dl_b, cpu))
+			return -EINVAL;
 
 	/*
 	 * Ensure we don't starve existing RT tasks if runtime turns zero.
@@ -2498,15 +2516,20 @@ static int __tg_rt_schedulable(struct task_group *tg, void *data)
 	if (dl_bandwidth_enabled() && !dl_b->dl_runtime && tg != &root_task_group &&
 	    tg_subtree_has_rt_tasks(tg))
 		return -EBUSY;
-
-	total = to_ratio(dl_b->dl_period, dl_b->dl_runtime);
-
 	/*
 	 * Nobody can have more than the global setting allows.
 	 */
-	if (total > to_ratio(global_rt_period(), global_rt_runtime()))
-		return -EINVAL;
+	for_each_possible_cpu(cpu) {
+		total = to_ratio(tg_cpu_period(dl_b, cpu), tg_cpu_runtime(dl_b, cpu));
+		if (total > to_ratio(global_rt_period(), global_rt_runtime()))
+			return -EINVAL;
+	}
 
+	/*
+	 * By definition the root_task_group has the same settings for all cpus,
+	 * and the overrides are always disabled.
+	 */
+	total = to_ratio(dl_b->dl_period, dl_b->dl_runtime);
 	if (tg == &root_task_group) {
 		if (!dl_check_tg(total))
 			return -EBUSY;
@@ -2516,7 +2539,7 @@ static int __tg_rt_schedulable(struct task_group *tg, void *data)
 	 * The sum of our children's runtime, plus our own bw, should not
 	 * exceed our own max.
 	 */
-	tg_compute_children_runtime(tg, &d->update, d->children_runtime);
+	tg_compute_children_runtime(tg, &d->update, cpu_possible_mask, d->children_runtime);
 	for_each_possible_cpu(cpu) {
 		runtime = tg_cpu_runtime(dl_b, cpu);
 		if (d->children_runtime[cpu] > runtime)
@@ -2612,6 +2635,31 @@ int tg_rt_bandwidth(struct task_group *tg,
 	return 0;
 }
 
+int tg_rt_single_bandwidth(struct task_group *tg, int cpu,
+			   u64 *rt_period_us, u64 *rt_runtime_us)
+{
+	const struct dl_bandwidth *dl_b;
+	cpumask_var_t mask __free(free_cpumask_var) = CPUMASK_VAR_NULL;
+
+	if (!alloc_cpumask_var(&mask, GFP_NOWAIT))
+		return 0;
+
+	cpuset_effective_cpus(tg->css.cgroup, mask);
+
+	guard(raw_spinlock_irq)(dl_bw_lock_of_tg(tg));
+	dl_b = dl_bandwidth_read(tg);
+
+	*rt_runtime_us = -1;
+	if (dl_b->dl_runtime != RUNTIME_INF || !cpumask_test_cpu(cpu, mask)) {
+		*rt_runtime_us = tg->dl_se[cpu]->dl_runtime;
+		*rt_runtime_us = DIV64_U64_ROUND_CLOSEST(*rt_runtime_us, NSEC_PER_USEC);
+	}
+
+	*rt_period_us = div64_u64(dl_b->dl_period, NSEC_PER_USEC);
+
+	return 0;
+}
+
 int tg_rt_internal_bandwidth(struct task_group *tg, int cpu,
 			     u64 *rt_period_us, u64 *rt_runtime_us)
 {
@@ -2637,6 +2685,29 @@ int tg_rt_internal_bandwidth(struct task_group *tg, int cpu,
 	return 0;
 }
 
+static void __update_parent_runtime(struct tg_update_data *update,
+				    struct task_group *parent_ctx,
+				    const struct cpumask *mask,
+				    u64 *children_runtime)
+{
+	const struct dl_bandwidth *dl_b;
+	u64 period, runtime;
+	int cpu;
+
+	if (parent_ctx == &root_task_group)
+		return;
+
+	dl_b = dl_bandwidth_read(parent_ctx);
+
+	tg_compute_children_runtime(parent_ctx, update, mask, children_runtime);
+	for_each_cpu(cpu, mask) {
+		period = tg_cpu_period(dl_b, cpu);
+		runtime = tg_cpu_runtime(dl_b, cpu) - children_runtime[cpu];
+
+		dl_init_tg(parent_ctx->dl_se[cpu], runtime, period);
+	}
+}
+
 int tg_set_rt_bandwidth(struct task_group *tg,
 			u64 rt_period_us, u64 rt_runtime_us)
 {
@@ -2647,7 +2718,6 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	const struct dl_bandwidth *dl_b;
 	u64 rt_period, rt_runtime, old_rt_runtime;
 	u64 *rt_actual_runtime __free(kfree) = NULL;
-	u64 period, runtime;
 	struct sched_attr attr;
 	int err, i;
 
@@ -2715,6 +2785,10 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 
 	init_dl_bandwidth(&update.dl_b, rt_period, rt_runtime, dl_b->active_context);
 	update.tg = tg;
+	for_each_possible_cpu(i) {
+		update.dl_b.dl_period_overrides[i]  = dl_b->dl_period_overrides[i];
+		update.dl_b.dl_runtime_overrides[i] = dl_b->dl_runtime_overrides[i];
+	}
 
 	cpuset_effective_cpus(tg->css.cgroup, update.dl_b.active_mask);
 
@@ -2754,18 +2828,121 @@ int tg_set_rt_bandwidth(struct task_group *tg,
 	/*
 	 * Update the dl_servers of the parent's active context
 	 */
-	if (parent_ctx == &root_task_group)
-		return 0;
+	__update_parent_runtime(&update, parent_ctx, cpu_possible_mask, rt_actual_runtime);
 
-	dl_b = dl_bandwidth_read(parent_ctx);
+	return 0;
+}
 
-	tg_compute_children_runtime(parent_ctx, &update, rt_actual_runtime);
-	for_each_possible_cpu(i) {
-		period = tg_cpu_period(dl_b, i);
-		runtime = tg_cpu_runtime(dl_b, i) - rt_actual_runtime[i];
+int tg_set_rt_bandwidth_override(struct task_group *tg,
+				 const struct cpumask *rt_mask,
+				 u64 rt_period_us,u64 rt_runtime_us)
+{
+	struct tg_update_data update;
+	struct dl_bandwidth *__update_dl_b __free(dl_bandwidth_free) = NULL;
+	struct task_group *parent_ctx;
+	struct dl_bandwidth *dl_b_write;
+	const struct dl_bandwidth *dl_b;
+	u64 rt_period, rt_runtime;
+	u64 *rt_actual_runtime __free(kfree) = NULL;
+	struct sched_attr attr;
+	int err, i;
 
-		dl_init_tg(parent_ctx->dl_se[i], runtime, period);
+	if (rt_runtime_us == RUNTIME_INF)
+		rt_runtime = RUNTIME_INF;
+	else if ((u64)rt_runtime_us > U64_MAX / NSEC_PER_USEC)
+		return -EINVAL;
+	else
+		rt_runtime = (u64)rt_runtime_us * NSEC_PER_USEC;
+
+	if (rt_runtime == RUNTIME_INF)
+		rt_period = RUNTIME_INF;
+	else if ((u64)rt_period_us > U64_MAX / NSEC_PER_USEC)
+		return -EINVAL;
+	else
+		rt_period = (u64)rt_period_us * NSEC_PER_USEC;
+
+	/*
+	 * The root_task_group bandwidth settings are only used to reserve bw
+	 * for HCBS cgroups; changing a subset of cpus has no meaning there.
+	 */
+	if (tg == &root_task_group)
+		return -EINVAL;
+
+	/*
+	 * Bound quota to defend quota against overflow during bandwidth shift.
+	 */
+	if (rt_runtime != RUNTIME_INF && rt_runtime > max_rt_runtime)
+		return -EINVAL;
+
+	/*
+	 * Check if the runtime and period min and max values are admissible.
+	 */
+	attr = (struct sched_attr){
+		.sched_flags = 0,
+		.sched_runtime = rt_runtime,
+		.sched_deadline = rt_period,
+		.sched_period = rt_period,
+	};
+
+	if (rt_runtime != RUNTIME_INF && !__checkparam_dl(&attr, true))
+		return -EINVAL;
+
+	guard(mutex)(&rt_constraints_mutex);
+	dl_b = dl_bandwidth_read(tg);
+
+	guard(sched_rt_handler)();
+	guard(sched_domains)();
+	guard(rcu)();
+
+	rt_actual_runtime = kcalloc(nr_cpu_ids, sizeof(u64), GFP_NOWAIT);
+	if (!rt_actual_runtime)
+		return -ENOMEM;
+
+	__update_dl_b = alloc_dl_bandwidth(&update.dl_b, GFP_NOWAIT);
+	if(!__update_dl_b)
+		return -ENOMEM;
+
+	init_dl_bandwidth(&update.dl_b, dl_b->dl_period, dl_b->dl_runtime, dl_bandwidth_read(tg)->active_context);
+
+	update.tg = tg;
+	cpuset_effective_cpus(tg->css.cgroup, update.dl_b.active_mask);
+
+	/* Check if the input mask is a subset of the cpuset mask */
+	if (!cpumask_subset(rt_mask, update.dl_b.active_mask))
+		return -EINVAL;
+
+	for_each_cpu_andnot(i, update.dl_b.active_mask, rt_mask) {
+		update.dl_b.dl_period_overrides[i]  = dl_b->dl_period_overrides[i];
+		update.dl_b.dl_runtime_overrides[i] = dl_b->dl_runtime_overrides[i];
 	}
+
+	for_each_cpu_and(i, update.dl_b.active_mask, rt_mask) {
+		update.dl_b.dl_period_overrides[i]  = rt_period;
+		update.dl_b.dl_runtime_overrides[i] = rt_runtime;
+	}
+
+	err = tg_rt_schedulable(&update, rt_actual_runtime);
+	if (err)
+		return err;
+
+	scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(tg)) {
+		dl_b_write = dl_bandwidth_write(tg);
+		for_each_cpu(i, rt_mask) {
+			dl_b_write->dl_period_overrides[i]  = rt_period;
+			dl_b_write->dl_runtime_overrides[i] = rt_runtime;
+		}
+	}
+
+	parent_ctx = dl_bandwidth_read(tg->parent)->active_context;
+
+	for_each_cpu(i, rt_mask) {
+		dl_init_tg(tg->dl_se[i], rt_actual_runtime[i], tg_cpu_period(dl_b, i));
+	}
+
+	/*
+	 * Update the dl_servers of the parent's active context
+	 */
+	__update_parent_runtime(&update, parent_ctx, rt_mask, rt_actual_runtime);
 
 	return 0;
 }

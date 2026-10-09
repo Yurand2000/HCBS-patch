@@ -9031,6 +9031,8 @@ void __init sched_init(void)
 	init_defrootdomain();
 
 #ifdef CONFIG_RT_GROUP_SCHED
+	BUG_ON(!alloc_dl_bandwidth(&root_task_group.dl_bandwidth, GFP_NOWAIT));
+
 	init_dl_bandwidth(&root_task_group.dl_bandwidth,
 			  global_rt_period(), 0, &root_task_group);
 #endif /* CONFIG_RT_GROUP_SCHED */
