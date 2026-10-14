@@ -317,6 +317,8 @@ struct dl_bandwidth {
 	raw_spinlock_t		dl_runtime_lock;
 	u64			dl_runtime;
 	u64			dl_period;
+	u64			*dl_runtime_overrides;
+	u64			*dl_period_overrides;
 	cpumask_var_t		active_mask;
 	struct task_group	*active_context;
 };
@@ -585,10 +587,15 @@ extern bool cfs_task_bw_constrained(struct task_struct *p);
 
 extern int tg_rt_bandwidth(struct task_group *tg,
 			   u64 *rt_period_us, u64 *rt_runtime_us);
+extern int tg_rt_single_bandwidth(struct task_group *tg, int cpu,
+				  u64 *rt_period_us, u64 *rt_runtime_us);
 extern int tg_rt_internal_bandwidth(struct task_group *tg, int cpu,
 				    u64 *rt_period_us, u64 *rt_runtime_us);
 extern int tg_set_rt_bandwidth(struct task_group *tg,
 			       u64 rt_period_us, u64 rt_runtime_us);
+extern int tg_set_rt_bandwidth_override(struct task_group *tg,
+					const struct cpumask *rt_mask,
+					u64 rt_period_us, u64 rt_runtime_us);
 extern int sched_rt_can_attach(struct task_group *tg);
 
 extern struct task_group *sched_create_group(struct task_group *parent);

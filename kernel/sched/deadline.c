@@ -593,24 +593,47 @@ static inline int is_leftmost(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq
 static void init_dl_rq_bw_ratio(struct dl_rq *dl_rq);
 
 struct dl_bandwidth *alloc_dl_bandwidth(struct dl_bandwidth *dl_b, gfp_t gfp_flags) {
+	u64 *period_overrides  __free(kfree) = NULL;
+	u64 *runtime_overrides __free(kfree) = NULL;
+
+	period_overrides = kcalloc(nr_cpu_ids, sizeof(u64), gfp_flags);
+	if (!period_overrides)
+		return NULL;
+
+	runtime_overrides = kcalloc(nr_cpu_ids, sizeof(u64), gfp_flags);
+	if (!runtime_overrides)
+		return NULL;
+
 	if (!alloc_cpumask_var(&dl_b->active_mask, gfp_flags))
 		return NULL;
+
+	dl_b->dl_period_overrides  = no_free_ptr(period_overrides);
+	dl_b->dl_runtime_overrides = no_free_ptr(runtime_overrides);
 
 	return dl_b;
 }
 
 void free_dl_bandwidth(struct dl_bandwidth *dl_b) {
 	free_cpumask_var(dl_b->active_mask);
+	kfree(dl_b->dl_period_overrides);
+	kfree(dl_b->dl_runtime_overrides);
 }
 
 void init_dl_bandwidth(struct dl_bandwidth *dl_b, u64 period, u64 runtime,
 		       struct task_group *active_context)
 {
+	int cpu;
+
 	raw_spin_lock_init(&dl_b->dl_runtime_lock);
 	dl_b->dl_period = period;
 	dl_b->dl_runtime = runtime;
 	dl_b->active_context = active_context;
 	cpumask_clear(dl_b->active_mask);
+
+	for_each_possible_cpu(cpu) {
+		dl_b->dl_period_overrides[cpu]  = RUNTIME_INF;
+		dl_b->dl_runtime_overrides[cpu] = RUNTIME_INF;
+	}
 }
 
 
