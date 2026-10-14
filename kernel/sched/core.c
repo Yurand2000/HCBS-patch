@@ -10552,9 +10552,20 @@ static int cpu_rt_max_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
 	u64 period_us, runtime_us;
+	int cpu;
 
 	tg_rt_bandwidth(tg, &period_us, &runtime_us);
 	cpu_period_quota_print(sf, period_us, runtime_us);
+
+	if (tg == &root_task_group)
+		return 0;
+
+	for_each_possible_cpu(cpu) {
+		tg_rt_single_bandwidth(tg, cpu, &period_us, &runtime_us);
+		if (runtime_us != RUNTIME_INF)
+			cpu_period_quota_single_print(sf, cpu, period_us, runtime_us);
+	}
+
 	return 0;
 }
 
@@ -10568,19 +10579,91 @@ static int cpu_rt_internal_show(struct seq_file *sf, void *v)
 		tg_rt_internal_bandwidth(tg, cpu, &period_us, &runtime_us);
 		cpu_period_quota_single_print(sf, cpu, period_us, runtime_us);
 	}
+
 	return 0;
+}
+
+static int __cpu_rt_max_parse(char *buf, struct cpumask *mask,
+			      u64 *period_us_p, u64 *quota_us_p)
+{
+	char *tok, *runtime_key, *period_key;
+
+	tok = strsep(&buf, " ");
+	if (!tok)
+		return -EINVAL;
+
+	if (strncmp(tok, "max", sizeof("max")) == 0) {
+		*quota_us_p = RUNTIME_INF;
+		return 0;
+	}
+
+	if (strncmp(tok, "default", sizeof("default")) == 0) {
+		if (strncmp(buf, "runtime=max", sizeof("runtime=max")) == 0) {
+			*quota_us_p = RUNTIME_INF;
+			*period_us_p = 0;
+			return 0;
+		}
+
+		if (!buf)
+			return -EINVAL;
+
+		goto parse_keys;
+	}
+
+	if (buf && sscanf(buf, "%llu", period_us_p) == 0) {
+		if (cpulist_parse(tok, mask) != 0)
+			return -EINVAL;
+
+		goto parse_cpumask;
+	}
+
+	if (sscanf(tok, "%llu", quota_us_p) < 1)
+		return -EINVAL;
+
+	return 0;
+
+parse_cpumask:
+	if (strncmp(buf, "default", sizeof("default")) == 0) {
+		*quota_us_p = RUNTIME_INF;
+		*period_us_p = RUNTIME_INF;
+		return 0;
+	}
+
+parse_keys:
+	runtime_key = strstr(buf, "runtime=");
+	period_key = strstr(buf, "period=");
+
+	if (runtime_key &&
+	    period_key &&
+	    sscanf(runtime_key, "runtime=%llu", quota_us_p) == 1 &&
+	    sscanf(period_key, "period=%llu", period_us_p) == 1)
+		return 0;
+
+	return -EINVAL;
 }
 
 static ssize_t cpu_rt_max_write(struct kernfs_open_file *of,
 			        char *buf, size_t nbytes, loff_t off)
 {
 	struct task_group *tg = css_tg(of_css(of));
-	u64 period_us = 0, runtime_us;
+	cpumask_var_t mask __free(free_cpumask_var) = CPUMASK_VAR_NULL;
+	u64 period_us, runtime_us;
 	int ret;
 
-	ret = cpu_period_quota_parse(buf, &period_us, &runtime_us);
-	if (!ret)
+	if (!alloc_cpumask_var(&mask, GFP_NOWAIT))
+		return -ENOMEM;
+
+	cpumask_clear(mask);
+
+	ret = __cpu_rt_max_parse(buf, mask, &period_us, &runtime_us);
+	if (ret)
+		return ret;
+
+	if (cpumask_empty(mask))
 		ret = tg_set_rt_bandwidth(tg, period_us, runtime_us);
+	else
+		ret = tg_set_rt_bandwidth_override(tg, mask, period_us, runtime_us);
+
 	return ret ?: nbytes;
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
