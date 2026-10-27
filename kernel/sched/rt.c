@@ -2906,6 +2906,12 @@ int tg_set_rt_bandwidth_override(struct task_group *tg,
 	guard(sched_rt_handler)();
 	guard(sched_domains)();
 	guard(rcu)();
+	/*
+	 * Disallow resetting overrides to active default-zero cgroups
+	 */
+	if (rt_runtime == RUNTIME_INF && dl_b->dl_runtime == 0 &&
+	    tg_subtree_has_rt_tasks(tg))
+		return -EINVAL;
 
 	rt_actual_runtime = kcalloc(nr_cpu_ids, sizeof(u64), GFP_NOWAIT);
 	if (!rt_actual_runtime)
@@ -2993,6 +2999,8 @@ int cpuset_can_change(struct cgroup *cgroup) {
 int sched_rt_can_attach(struct task_group *tg)
 {
 	struct task_group *ctx;
+	const struct dl_bandwidth *dl_b;
+	int cpu;
 
 	/* If rt group sched is disabled, tasks are always run in the root rq */
 	if (!rt_group_sched_enabled())
@@ -3007,8 +3015,15 @@ int sched_rt_can_attach(struct task_group *tg)
 
 	/* Don't accept real-time tasks when there is no way for them to run */
 	scoped_guard(raw_spinlock_irqsave, dl_bw_lock_of_tg(ctx)) {
-		if (dl_bandwidth_read(ctx)->dl_runtime == 0)
-			return 0;
+		dl_b = dl_bandwidth_read(ctx);
+
+		if (dl_b->dl_runtime)
+			return 1;
+
+		/* Allow default-zero but fully overridden cgroups to be attached to */
+		for_each_cpu(cpu, dl_b->active_mask)
+			if (tg_cpu_runtime(dl_b, cpu) == 0)
+				return 0;
 	}
 
 	return 1;
