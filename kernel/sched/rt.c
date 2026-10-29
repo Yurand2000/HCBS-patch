@@ -1400,7 +1400,8 @@ static int find_lowest_rt_rq(struct task_struct *task)
 			* different capacities of the CPUs when searching for
 			* the lowest_mask.
 			*/
-			if (dl_se->dl_throttled || !rt_task_fits_capacity(task, cpu))
+			if (!dl_se->dl_runtime || dl_se->dl_throttled ||
+			    !rt_task_fits_capacity(task, cpu))
 				continue;
 
 			if (prio >= lowest_prio) {
@@ -1551,7 +1552,8 @@ static struct rt_rq *find_lock_lowest_rt_rq(struct task_struct *task, struct rt_
 			 * check the task migration disable flag here too.
 			 */
 			if (unlikely(is_migration_disabled(task) ||
-				     (dl_group && lowest_dl_se->dl_throttled) ||
+				     (dl_group && lowest_dl_se->dl_throttled &&
+				      !lowest_dl_se->dl_runtime) ||
 				     !cpumask_test_cpu(lowest_rq->cpu, &task->cpus_mask) ||
 				     task != pick_next_pushable_task(rt_rq))) {
 
