@@ -8717,6 +8717,9 @@ int sched_cpu_deactivate(unsigned int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	int ret;
 
+	if (!tg_can_offline_cpu(cpu))
+		return -EBUSY;
+
 	ret = dl_bw_deactivate(cpu);
 
 	if (ret)
