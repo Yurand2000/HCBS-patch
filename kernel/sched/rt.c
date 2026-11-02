@@ -2812,6 +2812,33 @@ int cpuset_can_change(struct cgroup *cgroup) {
 	return 1;
 }
 
+static int __tg_can_offline_cpu(struct task_group *tg, void *data) {
+	const struct dl_bandwidth *dl_b;
+	int *d = data;
+	int cpu = *d;
+
+	if (tg == &root_task_group)
+		return 0;
+
+	guard(raw_spinlock_irq)(dl_bw_lock_of_tg(tg));
+	dl_b = dl_bandwidth_read(tg);
+	if (dl_b->dl_runtime == RUNTIME_INF)
+		return 0;
+
+	return cpumask_test_cpu(cpu, dl_b->active_mask);
+}
+
+int tg_can_offline_cpu(int cpu) {
+	if (!rt_group_sched_enabled())
+		return 1;
+
+	guard(rcu)();
+	if (walk_tg_tree(__tg_can_offline_cpu, tg_nop, &cpu))
+		return 0;
+
+	return 1;
+}
+
 int sched_rt_can_attach(struct task_group *tg)
 {
 	struct task_group *ctx;
