@@ -444,15 +444,27 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 
 	if (rt_policy(policy)) {
 		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
+		struct task_group *active_context;
 
-		/* Can't set/change the rt policy: */
-		if (policy != p->policy && !rlim_rtprio)
-			goto req_priv;
+		if (!rt_group_sched_enabled())
+			goto root_cgroup_checks;
 
-		/* Can't increase priority: */
-		if (attr->sched_priority > p->rt_priority &&
-		    attr->sched_priority > rlim_rtprio)
-			goto req_priv;
+		scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(p->sched_task_group)) {
+			active_context = dl_bandwidth_read(p->sched_task_group)->active_context;
+		}
+
+		/* Allow changing to the rt policy when not in the root cgroup */
+		if (active_context == &root_task_group) {
+root_cgroup_checks:
+			/* Can't set/change the rt policy: */
+			if (policy != p->policy && !rlim_rtprio)
+				goto req_priv;
+
+			/* Can't increase priority: */
+			if (attr->sched_priority > p->rt_priority &&
+			    attr->sched_priority > rlim_rtprio)
+				goto req_priv;
+		}
 	}
 
 	/*
