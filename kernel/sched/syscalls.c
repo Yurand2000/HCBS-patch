@@ -444,15 +444,27 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 
 	if (rt_policy(policy)) {
 		unsigned long rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
+		struct task_group *active_context;
 
-		/* Can't set/change the rt policy: */
-		if (policy != p->policy && !rlim_rtprio)
-			goto req_priv;
+		if (!rt_group_sched_enabled())
+			goto root_cgroup_checks;
 
-		/* Can't increase priority: */
-		if (attr->sched_priority > p->rt_priority &&
-		    attr->sched_priority > rlim_rtprio)
-			goto req_priv;
+		scoped_guard(raw_spinlock_irqsave, dl_bw_lock_of_tg(p->sched_task_group)) {
+			active_context = dl_bandwidth_read(p->sched_task_group)->active_context;
+		}
+
+		/* Allow changing to the rt policy when not in the root cgroup */
+		if (active_context == &root_task_group) {
+root_cgroup_checks:
+			/* Can't set/change the rt policy: */
+			if (policy != p->policy && !rlim_rtprio)
+				goto req_priv;
+
+			/* Can't increase priority: */
+			if (attr->sched_priority > p->rt_priority &&
+			    attr->sched_priority > rlim_rtprio)
+				goto req_priv;
+		}
 	}
 
 	/*
@@ -570,6 +582,15 @@ recheck:
 	 */
 	rq = task_rq_lock(p, &rf);
 	update_rq_clock(rq);
+
+	/*
+	 * Make sure that unlocked checks are consistent after locking.
+	 */
+	if (user) {
+		retval = user_check_sched_setscheduler(p, attr, policy, reset_on_fork);
+		if (retval)
+			goto unlock;
+	}
 
 	/*
 	 * Changing the policy of the stop threads its a very bad idea:
