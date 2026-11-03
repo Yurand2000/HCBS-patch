@@ -2854,9 +2854,19 @@ static void start_hrtick_dl(struct rq *rq, struct sched_dl_entity *dl_se)
 {
 	hrtick_start(rq, dl_se->runtime);
 }
+
+int dl_can_start_hrtick(struct rq *rq, struct sched_dl_entity *dl_se)
+{
+	return dl_se->runtime > 0 && is_leftmost(dl_se, &rq->dl);
+}
 #else /* !CONFIG_SCHED_HRTICK: */
 static void start_hrtick_dl(struct rq *rq, struct sched_dl_entity *dl_se)
 {
+}
+
+int dl_can_start_hrtick(struct rq *rq, struct sched_dl_entity *dl_se)
+{
+	return 0;
 }
 #endif /* !CONFIG_SCHED_HRTICK */
 
@@ -2989,8 +2999,7 @@ static void task_tick_dl(struct rq *rq, struct task_struct *p, int queued)
 	 * not being the leftmost task anymore. In that case NEED_RESCHED will
 	 * be set and schedule() will start a new hrtick for the next task.
 	 */
-	if (hrtick_enabled_dl(rq) && queued && p->dl.runtime > 0 &&
-	    is_leftmost(&p->dl, &rq->dl))
+	if (hrtick_enabled_dl(rq) && queued && dl_can_start_hrtick(rq, &p->dl))
 		start_hrtick_dl(rq, &p->dl);
 }
 
