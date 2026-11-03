@@ -1234,6 +1234,17 @@ same_group_sched:
 		check_preempt_equal_prio(rq, p);
 }
 
+#ifdef CONFIG_SCHED_HRTICK
+static void start_hrtick_rt(struct rq *rq, struct sched_dl_entity *dl_se)
+{
+	hrtick_start(rq, dl_se->runtime);
+}
+#else /* !CONFIG_SCHED_HRTICK: */
+static void start_hrtick_dl(struct rq *rq, struct sched_dl_entity *dl_se)
+{
+}
+#endif /* !CONFIG_SCHED_HRTICK */
+
 static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, enum snt_e type)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
@@ -1261,6 +1272,12 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, enum s
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
 
 	rt_queue_push_tasks(rt_rq);
+
+	if (!is_dl_group(rt_rq))
+		return;
+
+	if (hrtick_enabled_dl(rq))
+		start_hrtick_rt(rq, dl_group_of(rt_rq));
 }
 
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
@@ -2312,6 +2329,8 @@ static inline void watchdog(struct rq *rq, struct task_struct *p) { }
 static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
+	struct sched_dl_entity *dl_se;
+	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 
 	update_curr_rt(rq);
 	update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 1);
@@ -2339,6 +2358,17 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 		resched_curr(rq);
 		return;
 	}
+
+	if (!is_dl_group(rt_rq))
+		return;
+
+	/*
+	 * update_curr_rt() might have resulted our dl_server to not be anymore
+	 * the leftmost deadline entity, similarly to task_tick_dl.
+	 */
+	dl_se = dl_group_of(rt_rq);
+	if (hrtick_enabled_dl(rq) && queued && dl_can_start_hrtick(rq, dl_se))
+		start_hrtick_rt(rq, dl_se);
 }
 
 static unsigned int get_rr_interval_rt(struct rq *rq, struct task_struct *task)
