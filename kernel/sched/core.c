@@ -10535,7 +10535,7 @@ static struct cftype cpu_files[] = {
 		.write = cpu_rt_max_write,
 	},
 	{
-		.name = "rt.max.effective.local",
+		.name = "rt.effective.local",
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = cpu_rt_internal_show,
 	},
