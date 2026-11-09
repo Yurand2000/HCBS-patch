@@ -374,15 +374,18 @@ static void pull_group_rt_task(struct rq *);
 
 #define rq_queue_field_push(global_rq, new_rq, field)		\
 	do {							\
-		(new_rq)->field = (global_rq)->field;		\
-		(global_rq)->field = (new_rq);			\
+		struct rq *__rq = (global_rq);			\
+		struct rq *__new_rq = (new_rq);			\
+		__new_rq->field = __rq->field;			\
+		__rq->field = __new_rq;				\
 	} while (0)
 
 #define rq_queue_field_pop(global_rq, field)			\
 	({							\
-		struct rq *__head = (global_rq)->field;		\
+		struct rq *__rq = (global_rq);			\
+		struct rq *__head = __rq->field;		\
 		if (__head) {					\
-			(global_rq)->field = __head->field;	\
+			__rq->field = __head->field;	\
 			__head->field = NULL;			\
 		}						\
 		__head;						\
