@@ -126,7 +126,7 @@ Enabling the controller for the hierarchy creates two files:
   The file also accepts a runtime of 'max', specifying that its tasks must be
   scheduled using the nearest configured ancestor (or the root cgroup if it is
   the nearest non-max ancestor).
-* ``<cgroup>/cpu.rt.internal``, read-only, returns the runtime and period
+* ``<cgroup>/cpu.rt.effective.local``, read-only, returns the runtime and period
   actually allocated to the group, excluding that of its children.
 
  .. tip::
@@ -191,9 +191,9 @@ could be used for the component analysis in HCBS.
 3.1 Basic Definitions
 ---------------------
 
-*We borrow the same definitions given in the* ``sched_deadline`` *document, which
-are very briefly summarized here, and new ones, needed by the following content,
-are added.*
+*We borrow the same definitions given in the* ``sched_deadline`` *document,
+which are very briefly summarized here, and new ones, needed by the following
+content, are added.*
 
 A typical real-time task is composed of a repetition of computation phases (task
 instances, or jobs) which are activated on a periodic or sporadic fashion. For
@@ -442,8 +442,8 @@ workload. The cgroup filesystem exposes two files:
 
 * ``<cgroup>/cpu.rt.max``: which specifies the cgroups' runtime and period in
   microseconds.
-* ``<cgroup>/cpu.rt.internal``: read-only, get the cgroups' actualy runtime and
-  period in microseconds, without its children's bandwidth.
+* ``<cgroup>/cpu.rt.effective.local``: read-only, get the cgroups' actualy
+  runtime and period in microseconds, without its children's bandwidth.
 
 By definition, the specified runtime must be always less than or equal to the
 period. Additionally, an admission test checks if the bandwidth invariant is
