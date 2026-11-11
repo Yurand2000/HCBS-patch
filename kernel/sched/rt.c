@@ -900,14 +900,16 @@ static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
 
 static struct task_struct *pick_task_rt(struct rq *rq, struct rq_flags *rf)
 {
-	struct task_struct *p;
+	struct sched_rt_entity *next;
 
 	if (!sched_rt_runnable(rq))
 		return NULL;
 
-	p = rt_task_of(pick_next_rt_entity(&rq->rt));
+	next = pick_next_rt_entity(&rq->rt);
+	if (!next)
+		return NULL;
 
-	return p;
+	return rt_task_of(next);
 }
 
 static void put_prev_task_rt(struct rq *rq, struct task_struct *p, struct task_struct *next)
