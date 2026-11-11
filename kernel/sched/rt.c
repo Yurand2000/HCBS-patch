@@ -90,10 +90,8 @@ DEFINE_MUTEX(rt_constraints_mutex);
 
 const struct dl_bandwidth *dl_bandwidth_read(struct task_group *tg)
 {
-	int held;
-
 	if (IS_ENABLED(CONFIG_LOCKDEP) && debug_locks) {
-		held = 0;
+		int held = 0;
 		if (lockdep_is_held(&rt_constraints_mutex)) {
 			__assume_ctx_lock(&rt_constraints_mutex);
 			held = 1;
