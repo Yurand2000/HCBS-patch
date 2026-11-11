@@ -545,7 +545,7 @@ update_stats_dequeue_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se,
 			int flags)
 {
 	struct task_struct *p = NULL;
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 
 	if (!schedstat_enabled())
 		return;
@@ -561,11 +561,11 @@ update_stats_dequeue_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se,
 		state = READ_ONCE(p->__state);
 		if (state & TASK_INTERRUPTIBLE)
 			__schedstat_set(p->stats.sleep_start,
-					rq_clock(global_rq_of_rt_rq(rt_rq)));
+					rq_clock(rq));
 
 		if (state & TASK_UNINTERRUPTIBLE)
 			__schedstat_set(p->stats.block_start,
-					rq_clock(global_rq_of_rt_rq(rt_rq)));
+					rq_clock(rq));
 	}
 }
 
