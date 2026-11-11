@@ -1835,6 +1835,7 @@ void dl_server_stop(struct sched_dl_entity *dl_se)
 void dl_server_init(struct sched_dl_entity *dl_se, struct rq *rq,
 		    dl_server_pick_f pick_task)
 {
+	dl_se->dl_server = 1;
 	dl_se->rq = rq;
 	dl_se->server_pick_task = pick_task;
 }
@@ -1856,10 +1857,7 @@ void sched_init_dl_servers(void)
 
 		dl_se = &rq->fair_server;
 
-		WARN_ON(dl_server(dl_se));
-
-		dl_se->dl_server = 1;
-		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 1));
+		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 2));
 
 		dl_se->dl_defer = 1;
 		dl_se->dl_freq_invariant = 1;
@@ -1868,9 +1866,6 @@ void sched_init_dl_servers(void)
 #ifdef CONFIG_SCHED_CLASS_EXT
 		dl_se = &rq->ext_server;
 
-		WARN_ON(dl_server(dl_se));
-
-		dl_se->dl_server = 1;
 		WARN_ON(dl_server_apply_params(dl_se, runtime, period, 1));
 
 		dl_se->dl_defer = 1;
