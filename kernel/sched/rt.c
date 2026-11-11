@@ -101,10 +101,7 @@ void init_tg_rt_entry(struct task_group *tg, struct rt_rq *rt_rq,
 		struct sched_rt_entity *rt_se, int cpu,
 		struct sched_rt_entity *parent)
 {
-	struct rq *rq = cpu_rq(cpu);
-
 	rt_rq->highest_prio.curr = MAX_RT_PRIO-1;
-	rt_rq->rq = rq;
 	rt_rq->tg = tg;
 
 	tg->rt_rq[cpu] = rt_rq;
@@ -184,7 +181,7 @@ static void pull_rt_task(struct rq *);
 
 static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 {
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 
 	if (!has_pushable_tasks(rt_rq))
 		return;
@@ -194,7 +191,7 @@ static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 
 static inline void rt_queue_pull_task(struct rt_rq *rt_rq)
 {
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 
 	queue_balance_callback(rq, &per_cpu(rt_pull_head, rq->cpu), pull_rt_task);
 }
@@ -222,7 +219,7 @@ static void enqueue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
 		rt_rq->highest_prio.next = p->prio;
 
 	if (!rt_rq->overloaded) {
-		rt_set_overload(rq_of_rt_rq(rt_rq));
+		rt_set_overload(global_rq_of_rt_rq(rt_rq));
 		rt_rq->overloaded = 1;
 	}
 }
@@ -240,7 +237,7 @@ static void dequeue_pushable_task(struct rt_rq *rt_rq, struct task_struct *p)
 		rt_rq->highest_prio.next = MAX_RT_PRIO-1;
 
 		if (rt_rq->overloaded) {
-			rt_clear_overload(rq_of_rt_rq(rt_rq));
+			rt_clear_overload(global_rq_of_rt_rq(rt_rq));
 			rt_rq->overloaded = 0;
 		}
 	}
@@ -495,7 +492,7 @@ update_stats_wait_start_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se)
 	if (!stats)
 		return;
 
-	__update_stats_wait_start(rq_of_rt_rq(rt_rq), p, stats);
+	__update_stats_wait_start(global_rq_of_rt_rq(rt_rq), p, stats);
 }
 
 static inline void
@@ -512,7 +509,7 @@ update_stats_enqueue_sleeper_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_
 	if (!stats)
 		return;
 
-	__update_stats_enqueue_sleeper(rq_of_rt_rq(rt_rq), p, stats);
+	__update_stats_enqueue_sleeper(global_rq_of_rt_rq(rt_rq), p, stats);
 }
 
 static inline void
@@ -540,7 +537,7 @@ update_stats_wait_end_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se)
 	if (!stats)
 		return;
 
-	__update_stats_wait_end(rq_of_rt_rq(rt_rq), p, stats);
+	__update_stats_wait_end(global_rq_of_rt_rq(rt_rq), p, stats);
 }
 
 static inline void
@@ -548,7 +545,7 @@ update_stats_dequeue_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se,
 			int flags)
 {
 	struct task_struct *p = NULL;
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 
 	if (!schedstat_enabled())
 		return;
@@ -564,11 +561,11 @@ update_stats_dequeue_rt(struct rt_rq *rt_rq, struct sched_rt_entity *rt_se,
 		state = READ_ONCE(p->__state);
 		if (state & TASK_INTERRUPTIBLE)
 			__schedstat_set(p->stats.sleep_start,
-					rq_clock(rq_of_rt_rq(rt_rq)));
+					rq_clock(rq));
 
 		if (state & TASK_UNINTERRUPTIBLE)
 			__schedstat_set(p->stats.block_start,
-					rq_clock(rq_of_rt_rq(rt_rq)));
+					rq_clock(rq));
 	}
 }
 
@@ -1052,7 +1049,7 @@ static int find_lowest_rt_rq(struct task_struct *task)
 
 static struct task_struct *pick_next_pushable_task(struct rt_rq *rt_rq)
 {
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 	struct plist_head *head = &rt_rq->pushable_tasks;
 	struct task_struct *i, *p = NULL;
 
