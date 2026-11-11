@@ -1972,6 +1972,9 @@ static struct rt_rq *find_lock_lowest_rt_rq(struct task_struct *task, struct rt_
 		lowest_rq = NULL;
 	}
 
+	if (!lowest_rq)
+		return NULL;
+
 	return &lowest_rq->rt;
 }
 
