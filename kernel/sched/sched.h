@@ -918,16 +918,16 @@ struct rt_rq {
 	raw_spinlock_t		rt_runtime_lock;
 
 	unsigned int		rt_nr_boosted;
-#endif
-#ifdef CONFIG_CGROUP_SCHED
-	struct task_group	*tg; /* this tg has "this" rt_rq on given CPU for runnable entities */
-#endif
 
 	/*
 	 * The cgroup's served runqueue if the rt_rq entity belongs to a cgroup,
 	 * otherwise the top-level global runqueue.
 	 */
 	struct rq		*rq;
+#endif
+#ifdef CONFIG_CGROUP_SCHED
+	struct task_group	*tg; /* this tg has "this" rt_rq on given CPU for runnable entities */
+#endif
 };
 
 static inline bool rt_rq_is_runnable(struct rt_rq *rt_rq)
