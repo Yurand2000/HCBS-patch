@@ -1547,12 +1547,12 @@ static struct rt_rq *find_lock_lowest_rt_rq(struct task_struct *task, struct rt_
 }
 
 static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq) {
-	struct rt_rq *rt_rq = find_lock_lowest_rt_rq(task, &rq->rt);
+	struct rt_rq *rt_rq = find_lock_lowest_rt_rq(task, rt_rq_of_se(&task->rt));
 
 	if (!rt_rq)
 		return NULL;
 
-	return rq_of_rt_rq(rt_rq);
+	return global_rq_of_rt_rq(rt_rq);
 }
 
 /*
