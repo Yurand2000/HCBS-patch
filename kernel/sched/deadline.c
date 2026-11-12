@@ -2765,23 +2765,26 @@ static int balance_dl(struct rq *rq, struct rq_flags *rf)
 	return sched_stop_runnable(rq) || sched_dl_runnable(rq);
 }
 
-/*
- * Only called when both the current and waking task are -deadline
- * tasks.
- */
-static void wakeup_preempt_dl(struct rq *rq, struct task_struct *p, int flags)
+void dl_wakeup_preempt(struct rq *rq, struct task_struct *p,
+		       struct sched_dl_entity *donor_dl_se)
 {
-	struct task_struct *donor = rq->donor;
+	struct sched_dl_entity *p_dl_se = NULL;
+
 	/*
 	 * Can only get preempted by stop-class, and those should be
 	 * few and short lived, doesn't really make sense to push
-	 * anything away for that.
+	 * anything away for that. rt-class tasks which run in a rt-cgroup
+	 * can also cause preemption.
 	 */
-	if (p->sched_class != &dl_sched_class ||
-	    donor->sched_class != &dl_sched_class)
+	if (p->sched_class == &dl_sched_class)
+		p_dl_se = &p->dl;
+	else if (p->sched_class == &rt_sched_class &&
+		 is_dl_group(rt_rq_of_se(&p->rt)))
+		p_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
+	else
 		return;
 
-	if (dl_entity_preempt(&p->dl, &donor->dl)) {
+	if (dl_entity_preempt(p_dl_se, donor_dl_se)) {
 		resched_curr(rq);
 		return;
 	}
@@ -2790,9 +2793,24 @@ static void wakeup_preempt_dl(struct rq *rq, struct task_struct *p, int flags)
 	 * In the unlikely case current and p have the same deadline
 	 * let us try to decide what's the best thing to do...
 	 */
-	if ((p->dl.deadline == rq->donor->dl.deadline) &&
+	if ((p->sched_class == &dl_sched_class) &&
+	    (p->dl.deadline == donor_dl_se->deadline) &&
 	    !test_tsk_need_resched(rq->curr))
 		check_preempt_equal_dl(rq, p);
+}
+
+/*
+ * Only called when both the current and waking task are -deadline
+ * tasks.
+ */
+static void wakeup_preempt_dl(struct rq *rq, struct task_struct *p, int flags)
+{
+	struct task_struct *donor = rq->donor;
+
+	if (donor->sched_class != &dl_sched_class)
+		return;
+
+	dl_wakeup_preempt(rq, p, &donor->dl);
 }
 
 #ifdef CONFIG_SCHED_HRTICK
