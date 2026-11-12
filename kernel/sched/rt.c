@@ -1363,7 +1363,7 @@ static int find_lowest_rt_rq(struct task_struct *task)
 		if (!alloc_cpumask_var(&mask, GFP_NOWAIT))
 			return -1;
 
-		lowest_prio = task->prio - 1;
+		lowest_prio = task->prio + 1;
 		lowest_mask = mask;
 		cpumask_clear(lowest_mask);
 		for_each_cpu_and(cpu, cpu_online_mask, task->cpus_ptr) {
