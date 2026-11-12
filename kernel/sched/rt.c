@@ -1049,7 +1049,7 @@ static int find_lowest_rt_rq(struct task_struct *task)
 
 static struct task_struct *pick_next_pushable_task(struct rt_rq *rt_rq)
 {
-	struct rq *rq = rq_of_rt_rq(rt_rq);
+	struct rq *rq = global_rq_of_rt_rq(rt_rq);
 	struct plist_head *head = &rt_rq->pushable_tasks;
 	struct task_struct *i, *p = NULL;
 
