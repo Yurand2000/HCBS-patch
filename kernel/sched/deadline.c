@@ -3641,6 +3641,9 @@ static void switched_to_dl(struct rq *rq, struct task_struct *p)
 			deadline_queue_push_tasks(rq);
 		if (dl_task(rq->donor))
 			wakeup_preempt_dl(rq, p, 0);
+		else if (rt_task(rq->donor) &&
+			 is_dl_group(rt_rq_of_se(&rq->donor->rt)))
+			dl_wakeup_preempt(rq, p, dl_group_of(rt_rq_of_se(&rq->donor->rt)));
 		else
 			resched_curr(rq);
 	} else {
