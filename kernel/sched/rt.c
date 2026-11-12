@@ -1360,8 +1360,8 @@ static int find_lowest_rt_rq(struct task_struct *task)
 		if (!ret)
 			return -1; /* No targets found */
 	} else {
-		if (!alloc_cpumask_var(&mask, GFP_KERNEL))
-			return -ENOMEM;
+		if (!alloc_cpumask_var(&mask, GFP_NOWAIT))
+			return -1;
 
 		lowest_prio = task->prio - 1;
 		lowest_mask = mask;
