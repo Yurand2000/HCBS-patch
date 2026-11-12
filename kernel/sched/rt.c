@@ -281,12 +281,15 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 	return 1;
 }
 
+static void update_curr_rt(struct rq *rq);
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq);
 
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct rq_flags *rf)
 {
 	struct rt_rq *rt_rq = &dl_se->my_q->rt;
 	struct task_struct *p;
+
+	update_curr_rt(global_rq_of_rt_rq(rt_rq));
 
 	if (!sched_rt_runnable(dl_se->my_q))
 		return NULL;
