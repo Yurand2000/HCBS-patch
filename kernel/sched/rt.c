@@ -1093,9 +1093,8 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 		donor_dl_se = dl_group_of(rt_rq_of_se(&donor->rt));
 
 	if (woken_dl_se != NULL && donor_dl_se != NULL) {
-		if (woken_dl_se == donor_dl_se) {
+		if (woken_dl_se == donor_dl_se)
 			goto same_group_sched;
-		}
 
 		dl_wakeup_preempt(rq, p, donor_dl_se);
 		return;
@@ -1938,12 +1937,19 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
+	struct sched_dl_entity *p_dl_se = NULL;
+	struct sched_dl_entity *donor_dl_se = NULL;
+
 	/*
 	 * If we are running, update the avg_rt tracking, as the running time
 	 * will now on be accounted into the latter.
 	 */
 	if (task_current(rq, p)) {
 		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
+
+		if (is_dl_group(rt_rq_of_se(&p->rt)))
+			resched_curr(rq);
+
 		return;
 	}
 
@@ -1956,6 +1962,28 @@ static void switched_to_rt(struct rq *rq, struct task_struct *p)
 		if (p->nr_cpus_allowed > 1 && rt_rq_of_se(&p->rt)->overloaded)
 			rt_queue_push_tasks(rt_rq_of_se(&p->rt));
 
+		if (is_dl_group(rt_rq_of_se(&p->rt)))
+			p_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
+
+		if (is_dl_group(rt_rq_of_se(&rq->donor->rt)))
+			donor_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
+
+		if (p_dl_se != NULL && donor_dl_se != NULL) {
+			if (p_dl_se == donor_dl_se)
+				goto same_group_sched;
+
+			dl_wakeup_preempt(rq, p, donor_dl_se);
+			return;
+
+		} else if (p_dl_se != NULL) {
+			resched_curr(rq);
+			return;
+
+		} else if (donor_dl_se != NULL) {
+			return;
+		}
+
+same_group_sched:
 		if (p->prio < rq->donor->prio && cpu_online(cpu_of(rq)))
 			resched_curr(rq);
 	}
