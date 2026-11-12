@@ -2020,12 +2020,20 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 			resched_curr(rq);
 	} else {
 		/*
-		 * This task is not running, thus we check against the currently
-		 * running task for preemption. We can preempt only if both tasks are
-		 * in the same cgroup or on the global runqueue.
+		 * This task is not running, thus we check against the
+		 * currently running task for preemption. We can preempt only
+		 * if both tasks are in the same cgroup or on the global
+		 * runqueue (and donor is a rt task).
 		 */
+		if (sched_class_above(rq->donor->sched_class, &rt_sched_class))
+			return;
+		else if (!rt_task(rq->donor)) {
+			resched_curr(rq);
+			return;
+		}
+
 		if (rt_group_sched_enabled() &&
-		    rt_rq->tg != rt_rq_of_se(&rq->curr->rt)->tg)
+		    rt_rq->tg != rt_rq_of_se(&rq->donor->rt)->tg)
 			return;
 
 		/*

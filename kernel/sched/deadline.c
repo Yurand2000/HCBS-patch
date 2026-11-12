@@ -3668,6 +3668,8 @@ static u64 get_prio_dl(struct rq *rq, struct task_struct *p)
  */
 static void prio_changed_dl(struct rq *rq, struct task_struct *p, u64 old_deadline)
 {
+	u64 deadline;
+
 	if (!task_on_rq_queued(p))
 		return;
 
@@ -3692,8 +3694,17 @@ static void prio_changed_dl(struct rq *rq, struct task_struct *p, u64 old_deadli
 		 *
 		 * Otherwise, if p was given an earlier deadline, reschedule.
 		 */
-		if (!dl_task(rq->curr) ||
-		    dl_time_before(p->dl.deadline, rq->curr->dl.deadline))
+		if (dl_task(rq->curr))
+			deadline = rq->curr->dl.deadline;
+		else if (rt_task(rq->curr) &&
+			 is_dl_group(rt_rq_of_se(&rq->curr->rt)))
+			deadline = dl_group_of(rt_rq_of_se(&rq->curr->rt))->deadline;
+		else {
+			resched_curr(rq);
+			return;
+		}
+
+		if (dl_time_before(p->dl.deadline, rq->curr->dl.deadline))
 			resched_curr(rq);
 	}
 }
