@@ -2131,8 +2131,11 @@ static int task_is_throttled_rt(struct task_struct *p, int cpu)
 #ifdef CONFIG_RT_GROUP_SCHED
 	struct rt_rq *rt_rq;
 
-	rt_rq = task_group(p)->rt_rq[cpu];
-	WARN_ON(!rt_group_sched_enabled() && rt_rq->tg != &root_task_group);
+	if (!rt_group_sched_enabled()
+		return 0;
+
+	guard(raw_spinlock_irq)(dl_bw_lock_of_tg(task_group(p)));
+	rt_rq = dl_bandwidth_read(task_group(p))->active_context->rt_rq[cpu];
 
 	if (is_dl_group(rt_rq))
 		return dl_group_of(rt_rq)->dl_throttled;
