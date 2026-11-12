@@ -10454,9 +10454,13 @@ static ssize_t cpu_max_write(struct kernfs_open_file *of,
 static int cpu_rt_max_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
-	u64 period_us, runtime_us;
+	u64 period_us = 0, runtime_us;
 
-	tg_rt_bandwidth(tg, &period_us, &runtime_us);
+	if (rt_group_sched_enabled())
+		tg_rt_bandwidth(tg, &period_us, &runtime_us);
+	else
+		runtime_us = RUNTIME_INF;
+
 	cpu_period_quota_print(sf, period_us, runtime_us);
 	return 0;
 }
@@ -10464,9 +10468,13 @@ static int cpu_rt_max_show(struct seq_file *sf, void *v)
 static int cpu_rt_internal_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
-	u64 period_us, runtime_us;
+	u64 period_us = 0, runtime_us;
 
-	tg_rt_internal_bandwidth(tg, &period_us, &runtime_us);
+	if (rt_group_sched_enabled())
+		tg_rt_internal_bandwidth(tg, &period_us, &runtime_us);
+	else
+		runtime_us = RUNTIME_INF;
+
 	cpu_period_quota_print(sf, period_us, runtime_us);
 	return 0;
 }
@@ -10477,6 +10485,9 @@ static ssize_t cpu_rt_max_write(struct kernfs_open_file *of,
 	struct task_group *tg = css_tg(of_css(of));
 	u64 period_us = 0, runtime_us;
 	int ret;
+
+	if (!rt_group_sched_enabled())
+		return -EINVAL;
 
 	ret = cpu_period_quota_parse(buf, &period_us, &runtime_us);
 	if (!ret)
