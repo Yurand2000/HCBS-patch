@@ -537,9 +537,6 @@ static void update_curr_rt(struct rq *rq)
 	if (!rt_group_sched_enabled())
 		return;
 
-	if (!dl_bandwidth_enabled())
-		return;
-
 	rt_rq = rt_rq_of_se(&donor->rt);
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
