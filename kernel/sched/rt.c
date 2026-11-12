@@ -1058,6 +1058,9 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_dl_entity *woken_dl_se = NULL;
 	struct sched_dl_entity *donor_dl_se = NULL;
 
+	if (donor->sched_class != &rt_sched_class)
+		return;
+
 	if (!rt_group_sched_enabled())
 		goto same_group_sched;
 
@@ -1078,12 +1081,15 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 	 *   - if donor is a DEADLINE task and waking is in a cgroup, check whether
 	 *     the woken task's server preempts donor.
 	 */
-	if (is_dl_group(rt_rq_of_se(&p->rt)))
+	if (sched_class_above(p->sched_class, &dl_sched_class))
+		return;
+	else if (p->sched_class == &dl_sched_class)
+		woken_dl_se = &p->dl;
+	else if (p->sched_class == &rt_sched_class &&
+		 is_dl_group(rt_rq_of_se(&p->rt)))
 		woken_dl_se = dl_group_of(rt_rq_of_se(&p->rt));
 
-	if (task_has_dl_policy(donor))
-		donor_dl_se = &donor->dl;
-	else if (is_dl_group(rt_rq_of_se(&donor->rt)))
+	if (is_dl_group(rt_rq_of_se(&donor->rt)))
 		donor_dl_se = dl_group_of(rt_rq_of_se(&donor->rt));
 
 	if (woken_dl_se != NULL && donor_dl_se != NULL) {
@@ -1091,9 +1097,7 @@ static void wakeup_preempt_rt(struct rq *rq, struct task_struct *p, int flags)
 			goto same_group_sched;
 		}
 
-		if (dl_entity_preempt(woken_dl_se, donor_dl_se))
-			resched_curr(rq);
-
+		dl_wakeup_preempt(rq, p, donor_dl_se);
 		return;
 
 	} else if (woken_dl_se != NULL) {
@@ -1108,8 +1112,7 @@ same_group_sched:
 	/*
 	 * XXX If we're preempted by DL, queue a push?
 	 */
-	if (p->sched_class != &rt_sched_class ||
-	    donor->sched_class != &rt_sched_class)
+	if (p->sched_class != &rt_sched_class)
 		return;
 
 	if (p->prio < donor->prio) {

@@ -367,6 +367,8 @@ extern int  sched_dl_overflow(struct task_struct *p, int policy, const struct sc
 extern void __setparam_dl(struct task_struct *p, const struct sched_attr *attr);
 extern void __getparam_dl(struct task_struct *p, struct sched_attr *attr, unsigned int flags);
 extern bool __checkparam_dl(const struct sched_attr *attr);
+extern void dl_wakeup_preempt(struct rq *rq, struct task_struct *p,
+			      struct sched_dl_entity *donor_dl_se);
 extern bool dl_param_changed(struct task_struct *p, const struct sched_attr *attr);
 extern int  dl_cpuset_cpumask_can_shrink(const struct cpumask *cur, const struct cpumask *trial);
 extern int  dl_bw_deactivate(int cpu);
