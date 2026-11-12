@@ -2032,9 +2032,11 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, u64 oldprio)
 			return;
 		}
 
+#ifdef CONFIG_RT_GROUP_SCHED
 		if (rt_group_sched_enabled() &&
 		    rt_rq->tg != rt_rq_of_se(&rq->donor->rt)->tg)
 			return;
+#endif
 
 		/*
 		 * This task is not running, but if it is
@@ -2388,6 +2390,13 @@ int sched_rt_can_attach(struct task_group *tg)
 	if (rt_group_sched_enabled() && tg->dl_bandwidth.dl_runtime == 0)
 		return 0;
 
+	return 1;
+}
+
+#else
+
+int sched_rt_can_attach(struct task_group *tg)
+{
 	return 1;
 }
 
