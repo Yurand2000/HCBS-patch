@@ -1514,26 +1514,25 @@ static struct rt_rq *find_lock_lowest_rt_rq(struct task_struct *task, struct rt_
 			return NULL;
 		}
 
-		/* if the prio of this runqueue changed, try again */
-		if (double_lock_balance(rq, lowest_rq)) {
-			/*
-			 * We had to unlock the run queue. In
-			 * the mean time, task could have
-			 * migrated already or had its affinity changed,
-			 * therefore check if the task is still at the
-			 * head of the pushable tasks list.
-			 * It is possible the task was scheduled, set
-			 * "migrate_disabled" and then got preempted, so we must
-			 * check the task migration disable flag here too.
-			 */
-			if (unlikely(is_migration_disabled(task) ||
-				     (dl_group && lowest_dl_se->dl_throttled) ||
-				     !cpumask_test_cpu(lowest_rq->cpu, &task->cpus_mask) ||
-				     task != pick_next_pushable_task(rt_rq))) {
+		double_lock_balance(rq, lowest_rq);
 
-				double_unlock_balance(rq, lowest_rq);
-				return NULL;
-			}
+		/*
+		 * We may have had to unlock the run queue. In
+		 * the mean time, task could have
+		 * migrated already or had its affinity changed,
+		 * therefore check if the task is still at the
+		 * head of the pushable tasks list.
+		 * It is possible the task was scheduled, set
+		 * "migrate_disabled" and then got preempted, so we must
+		 * check the task migration disable flag here too.
+		 */
+		if (unlikely(is_migration_disabled(task) ||
+			     (dl_group && lowest_dl_se->dl_throttled) ||
+			     !cpumask_test_cpu(lowest_rq->cpu, &task->cpus_mask) ||
+			     task != pick_next_pushable_task(rt_rq))) {
+
+			double_unlock_balance(rq, lowest_rq);
+			return NULL;
 		}
 
 		/* If this rq is still suitable use it. */
