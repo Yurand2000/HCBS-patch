@@ -2610,6 +2610,16 @@ int sched_rt_can_attach(struct task_group *tg)
 
 #endif /* !CONFIG_RT_GROUP_SCHED */
 
+DEFINE_MUTEX(sched_rt_handler_mutex);
+
+void sched_rt_handler_mutex_lock(void) {
+	mutex_lock(&sched_rt_handler_mutex);
+}
+
+void sched_rt_handler_mutex_unlock(void) {
+	mutex_unlock(&sched_rt_handler_mutex);
+}
+
 #ifdef CONFIG_SYSCTL
 static int sched_rt_global_validate(void)
 {
@@ -2620,16 +2630,6 @@ static int sched_rt_global_validate(void)
 		return -EINVAL;
 
 	return 0;
-}
-
-DEFINE_MUTEX(sched_rt_handler_mutex);
-
-void sched_rt_handler_mutex_lock() {
-	mutex_lock(&sched_rt_handler_mutex);
-}
-
-void sched_rt_handler_mutex_unlock() {
-	mutex_unlock(&sched_rt_handler_mutex);
 }
 
 static int sched_rt_handler(const struct ctl_table *table, int write, void *buffer,
