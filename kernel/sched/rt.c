@@ -1240,7 +1240,7 @@ static void start_hrtick_rt(struct rq *rq, struct sched_dl_entity *dl_se)
 	hrtick_start(rq, dl_se->runtime);
 }
 #else /* !CONFIG_SCHED_HRTICK: */
-static void start_hrtick_dl(struct rq *rq, struct sched_dl_entity *dl_se)
+static void start_hrtick_rt(struct rq *rq, struct sched_dl_entity *dl_se)
 {
 }
 #endif /* !CONFIG_SCHED_HRTICK */
