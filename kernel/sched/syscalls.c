@@ -449,7 +449,7 @@ static int user_check_sched_setscheduler(struct task_struct *p,
 		if (!rt_group_sched_enabled())
 			goto root_cgroup_checks;
 
-		scoped_guard(raw_spinlock_irq, dl_bw_lock_of_tg(p->sched_task_group)) {
+		scoped_guard(raw_spinlock_irqsave, dl_bw_lock_of_tg(p->sched_task_group)) {
 			active_context = dl_bandwidth_read(p->sched_task_group)->active_context;
 		}
 
@@ -582,6 +582,15 @@ recheck:
 	 */
 	rq = task_rq_lock(p, &rf);
 	update_rq_clock(rq);
+
+	/*
+	 * Make sure that unlocked checks are consistent after locking.
+	 */
+	if (user) {
+		retval = user_check_sched_setscheduler(p, attr, policy, reset_on_fork);
+		if (retval)
+			goto unlock;
+	}
 
 	/*
 	 * Changing the policy of the stop threads its a very bad idea:
