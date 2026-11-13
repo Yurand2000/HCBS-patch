@@ -1989,7 +1989,10 @@ group_sched:
 		 * alter this_rq
 		 */
 		push_task = NULL;
-		double_lock_balance(this_rq, src_rq);
+		if (double_lock_balance(this_rq, src_rq) &&
+		    dl_group && src_rt_rq->rt_nr_running <= 1 &&
+		    !src_dl_se->dl_throttled)
+			goto skip;
 
 		/*
 		 * We can pull only a task, which is pushable
