@@ -1991,6 +1991,7 @@ group_sched:
 			 * in the same runqueue as donor.
 			 */
 			if (tg_of_se(&src_rq->donor->rt) == this_rt_rq->tg &&
+			    rt_task(src_rq->donor) &&
 			    p->prio < src_rq->donor->prio)
 				goto skip;
 
@@ -1999,7 +2000,8 @@ group_sched:
 				 * If the current task does not belong to the
 				 * same task group we cannot push it away.
 				 */
-				if (tg_of_se(&src_rq->donor->rt) != this_rt_rq->tg)
+				if (tg_of_se(&src_rq->donor->rt) != this_rt_rq->tg &&
+				    rt_task(src_rq->donor))
 					goto skip;
 
 				push_task = get_push_task(src_rq);
