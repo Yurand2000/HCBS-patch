@@ -283,7 +283,7 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 }
 
 static void update_curr_rt(struct rq *rq);
-static void pull_rt_task(struct rq *);
+static int pull_rt_rq_task(struct rt_rq *rt_rq);
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq);
 
 static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct rq_flags *rf)
@@ -291,16 +291,22 @@ static struct task_struct *rt_server_pick(struct sched_dl_entity *dl_se, struct 
 	struct rt_rq *rt_rq = &dl_se->my_q->rt;
 	struct rq *global_rq = global_rq_of_rt_rq(rt_rq);
 	struct task_struct *p;
+	int pull;
 
 	update_curr_rt(global_rq);
 
 	if (!sched_rt_runnable(dl_se->my_q)) {
+		if (sched_core_enabled(global_rq))
+			return NULL;
+
 		rq_unpin_lock(global_rq, rf);
-		pull_rt_task(rq_of_rt_rq(rt_rq));
+		pull = pull_rt_rq_task(rt_rq);
 		update_rq_clock(global_rq);
 		rq_repin_lock(global_rq, rf);
 
-		if (!sched_rt_runnable(dl_se->my_q))
+		if (pull < 0)
+			return RETRY_TASK;
+		else if (pull == 0)
 			return NULL;
 	}
 
@@ -458,8 +464,6 @@ static void push_rt_rq_tasks(struct rt_rq *rt_rq);
 static void push_rt_tasks(struct rq *global_rq) {
 	push_rt_rq_tasks(&global_rq->rt);
 }
-
-static void pull_rt_rq_task(struct rt_rq *this_rt_rq);
 
 static void pull_rt_task(struct rq *global_rq) {
 	pull_rt_rq_task(&global_rq->rt);
@@ -1896,7 +1900,16 @@ void rto_push_irq_work_func(struct irq_work *work)
 }
 #endif /* HAVE_RT_PUSH_IPI */
 
-static void pull_rt_rq_task(struct rt_rq *this_rt_rq)
+/*
+ * pull_rt_rq_task is called by rt_server_pick() if this deadline server is
+ * about to become idle. Attempts to pull tasks from other CPUs.
+ *
+ * Returns:
+ *   < 0 - we released the lock and there are tasks with higher prio present
+ *     0 - failed, no new tasks
+ *   > 0 - success, new rt tasks present
+ */
+static int pull_rt_rq_task(struct rt_rq *this_rt_rq)
 {
 	struct rq* this_rq = global_rq_of_rt_rq(this_rt_rq);
 	int this_cpu = this_rq->cpu, cpu;
@@ -1916,7 +1929,7 @@ static void pull_rt_rq_task(struct rt_rq *this_rt_rq)
 	rt_overload_count = rt_overloaded(this_rq);
 
 	if (likely(!rt_overload_count))
-		return;
+		return 0;
 
 	/*
 	 * Match the barrier from rt_set_overloaded; this guarantees that if we
@@ -1927,12 +1940,12 @@ static void pull_rt_rq_task(struct rt_rq *this_rt_rq)
 	/* If we are the only overloaded CPU do nothing */
 	if (rt_overload_count == 1 &&
 	    cpumask_test_cpu(this_rq->cpu, this_rq->rd->rto_mask))
-		return;
+		return 0;
 
 #ifdef HAVE_RT_PUSH_IPI
 	if (sched_feat(RT_PUSH_IPI)) {
 		tell_cpu_to_push(this_rq);
-		return;
+		return 0;
 	}
 #endif
 
@@ -1941,6 +1954,8 @@ group_sched:
 		cpu_mask = this_rq->rd->rto_mask;
 	else
 		cpu_mask = cpu_online_mask;
+
+	rq_modified_begin(this_rq, &rt_sched_class);
 
 	for_each_cpu(cpu, cpu_mask) {
 		if (this_cpu == cpu)
@@ -2040,6 +2055,11 @@ skip:
 
 	if (resched)
 		resched_curr(this_rq);
+
+	if (rq_modified_above(this_rq, &rt_sched_class))
+		return -1;
+
+	return resched;
 }
 
 /*
