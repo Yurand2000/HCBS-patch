@@ -366,7 +366,9 @@ extern s64 dl_scaled_delta_exec(struct rq *rq, struct sched_dl_entity *dl_se, s6
  * SCHED_DEADLINE supports servers (nested scheduling) with the following
  * interface:
  *
- *   dl_se::rq -- runqueue we belong to.
+ *   dl_se::dl_rq -- dl_rq on which the server is queued.
+ *
+ *   dl_se::my_q -- runqueue the server schedules tasks from.
  *
  *   dl_se::server_pick() -- nested pick_next_task(); we yield the period if this
  *                           returns NULL.
