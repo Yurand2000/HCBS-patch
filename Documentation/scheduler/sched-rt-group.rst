@@ -239,8 +239,9 @@ provides **Theta** units of resource every **Pi** time units, where the
 
 This theoretical model is one of the many models that can abstract the
 interface of our real-time cgroups: let **m'** be the number of CPUs of the
-machine, let **Theta** be **m' * <cgroup>/cpu.rt_runtime_us** and **Pi** be
-**<cgroup>/cpu.rt_period_us**.
+machine, given the **runtime** and **period** values from
+**<cgroup>/cpu.rt.max**, let **Theta** be equal to **m' * <runtime>* and **Pi**
+be equal to **<period>**.
 
 Let's introduce the concept of Supply Bound Function (SBF). A SBF is a function
 which outputs a lower bound for the processor supply provided in a given time
@@ -350,8 +351,8 @@ developed to transform MPR interfaces into periodic tasks, so that a
 number of periodic servers which respect the tasks requirements can be used for
 the scheduling of the MPR interface and associated tasks.
 
-Let **u = <Pi, Theta, m>** be a MPR interface, let **a = Theta - m * floor(Theta
-/ m)**, let **k = floor(a)**. Define a transformation from **u** to a periodic
+Let **u = <Pi, Theta, m'>** be a MPR interface, let **a = Theta - m' * floor(Theta
+/ m')**, let **k = floor(a)**. Define a transformation from **u** to a periodic
 taskset **Tau_u = { tau_1 = (C_1, D_1, P_1), ..., tau_m' = (C_m', D_m', P_m')
 }**, where:
 
@@ -427,9 +428,6 @@ be enabled::
   # Assume the cgroup file system is mounted at /sys/fs/cgroup
   > echo "+cpu" > /sys/fs/cgroup/cgroup.subtree_control
 
-The CPU controller can only be mounted if there is no SCHED_FIFO/SCHED_RR task
-scheduled in any cgroup other than the root control group.
-
 The root control group has no bandwidth allocated by default, so make sure to
 allocate some bandwidth so that it can be used by the other cgroups. More on
 that in the following section...
@@ -449,7 +447,7 @@ By definition, the specified runtime must be always less than or equal to the
 period. Additionally, an admission test checks if the bandwidth invariant is
 respected (i.e. sum of children's bandwidth <= parent's bandwidth).
 
-The root control group files instead control and reserve the SCHED_DEADLINE
+The root control group file instead controls and reserves the SCHED_DEADLINE
 bandwidth allocated to real-time cgroups, since real-time groups compete and
 share the same bandwidth allocated to SCHED_DEADLINE tasks.
 
