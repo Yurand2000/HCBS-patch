@@ -118,6 +118,7 @@ struct dl_bandwidth *dl_bandwidth_write(struct task_group *tg)
 
 void unregister_rt_sched_group(struct task_group *tg)
 {
+	struct rq *rq;
 	int i;
 
 	if (!rt_group_sched_enabled())
@@ -132,6 +133,11 @@ void unregister_rt_sched_group(struct task_group *tg)
 
 		if (tg->dl_se[i]->dl_runtime)
 			dl_init_tg(tg->dl_se[i], 0, tg->dl_se[i]->dl_period);
+
+		rq = rq_of_rt_rq(tg->rt_rq[i]);
+		guard(rq_lock_irqsave)(global_rq_of_rt_rq(tg->rt_rq[i]));
+		list_del(&rq->rq_to_push_from);
+		list_del(&rq->rq_to_pull_to);
 	}
 }
 
@@ -266,6 +272,9 @@ int alloc_rt_sched_group(struct task_group *tg, struct task_group *parent)
 		s_rq->cpu = i;
 		s_rq->rt.tg = tg;
 
+		INIT_LIST_HEAD(&s_rq->rq_to_push_from);
+		INIT_LIST_HEAD(&s_rq->rq_to_pull_to);
+
 		init_dl_entity(dl_se);
 		dl_se->dl_runtime = 0;
 		dl_se->dl_deadline = 0;
@@ -372,23 +381,27 @@ static void pull_rt_task(struct rq *);
 static void push_group_rt_tasks(struct rq *);
 static void pull_group_rt_task(struct rq *);
 
-#define rq_queue_field_push(global_rq, new_rq, field)		\
-	do {							\
-		struct rq *__rq = (global_rq);			\
-		struct rq *__new_rq = (new_rq);			\
-		__new_rq->field = __rq->field;			\
-		__rq->field = __new_rq;				\
+#ifdef CONFIG_RT_GROUP_SCHED
+
+#define rq_queue_field_push(global_rq, new_rq, field)			\
+	do {								\
+		struct rq *__rq = (global_rq);				\
+		struct rq *__new_rq = (new_rq);				\
+		if (list_empty(&__new_rq->field))			\
+			list_add_tail(&__new_rq->field, &__rq->field);	\
 	} while (0)
 
-#define rq_queue_field_pop(global_rq, field)			\
-	({							\
-		struct rq *__rq = (global_rq);			\
-		struct rq *__head = __rq->field;		\
-		if (__head) {					\
-			__rq->field = __head->field;	\
-			__head->field = NULL;			\
-		}						\
-		__head;						\
+#define rq_queue_field_pop(global_rq, field)					\
+	({									\
+		struct rq *__rq = (global_rq);					\
+		struct list_head *__head;					\
+		struct rq *__head_rq = NULL;					\
+		if (!list_empty(&__rq->field)) {				\
+			__head = __rq->field.next;				\
+			__head_rq = container_of(__head, struct rq, field);	\
+			list_del_init(__head);					\
+		}								\
+		__head_rq;							\
 	})
 
 #define push_rq_to_push_from(global_rq, new_rq) rq_queue_field_push((global_rq), (new_rq), rq_to_push_from)
@@ -396,6 +409,16 @@ static void pull_group_rt_task(struct rq *);
 
 #define push_rq_to_pull_to(global_rq, new_rq) rq_queue_field_push((global_rq), (new_rq), rq_to_pull_to)
 #define pop_rq_to_pull_to(global_rq) rq_queue_field_pop((global_rq), rq_to_pull_to)
+
+#else
+
+#define push_rq_to_push_from(global_rq, new_rq)
+#define pop_rq_to_push_from(global_rq) ((struct rq *)NULL)
+
+#define push_rq_to_pull_to(global_rq, new_rq)
+#define pop_rq_to_pull_to(global_rq) ((struct rq *)NULL)
+
+#endif
 
 static inline void rt_queue_push_tasks(struct rt_rq *rt_rq)
 {

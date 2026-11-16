@@ -9007,6 +9007,8 @@ void __init sched_init(void)
 		rq->rt.tg = &root_task_group;
 		root_task_group.rt_rq[i] = &rq->rt;
 		root_task_group.dl_se[i] = NULL;
+		INIT_LIST_HEAD(&rq->rq_to_push_from);
+		INIT_LIST_HEAD(&rq->rq_to_pull_to);
 #endif
 		rq->next_class = &idle_sched_class;
 
