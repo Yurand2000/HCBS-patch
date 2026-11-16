@@ -10309,7 +10309,7 @@ idle:
 
 static struct task_struct *
 fair_server_pick_task(struct sched_dl_entity *dl_se, struct rq_flags *rf)
-	__must_hold(__rq_lockp(dl_se->rq))
+	__must_hold(__rq_lockp(dl_se->my_q))
 {
 	return pick_task_fair(dl_se->my_q, rf);
 }
