@@ -2372,6 +2372,16 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 	if (--p->rt.time_slice)
 		return;
 
+	if (hrtick_enabled_dl(rq) && queued && is_dl_group(rt_rq)) {
+		/*
+		 * update_curr_rt() might have resulted our dl_server to not be
+		 * anymore the leftmost dl entity, similar to task_tick_dl.
+		 */
+		dl_se = dl_group_of(rt_rq);
+		if (dl_can_start_hrtick(rq, dl_se))
+			start_hrtick_rt(rq, dl_se);
+	}
+
 	p->rt.time_slice = sched_rr_timeslice;
 
 	/*
@@ -2383,17 +2393,6 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 		resched_curr(rq);
 		return;
 	}
-
-	if (!is_dl_group(rt_rq))
-		return;
-
-	/*
-	 * update_curr_rt() might have resulted our dl_server to not be anymore
-	 * the leftmost deadline entity, similarly to task_tick_dl.
-	 */
-	dl_se = dl_group_of(rt_rq);
-	if (hrtick_enabled_dl(rq) && queued && dl_can_start_hrtick(rq, dl_se))
-		start_hrtick_rt(rq, dl_se);
 }
 
 static unsigned int get_rr_interval_rt(struct rq *rq, struct task_struct *task)
