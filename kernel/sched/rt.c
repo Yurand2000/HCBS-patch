@@ -1272,6 +1272,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, enum s
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 	struct rt_rq *rt_rq = rt_rq_of_se(&p->rt);
+	struct sched_dl_entity *dl_se;
 
 	if (type == SNT_REPICK)
 		return;
@@ -1299,8 +1300,9 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, enum s
 	if (!is_dl_group(rt_rq))
 		return;
 
-	if (hrtick_enabled_dl(rq))
-		start_hrtick_rt(rq, dl_group_of(rt_rq));
+	dl_se = dl_group_of(rt_rq);
+	if (hrtick_enabled_dl(rq) && dl_can_start_hrtick(rq, dl_se))
+		start_hrtick_rt(rq, dl_se);
 }
 
 static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
