@@ -640,7 +640,7 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
-		if (!dl_se->dl_throttled)
+		if (dl_se->dl_server_active && !dl_se->dl_throttled)
 			add_nr_running(global_rq_of_rt_rq(rt_rq), 1);
 	}
 
@@ -659,7 +659,7 @@ void dec_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	if (is_dl_group(rt_rq)) {
 		struct sched_dl_entity *dl_se = dl_group_of(rt_rq);
 
-		if (!dl_se->dl_throttled)
+		if (dl_se->dl_server_active && !dl_se->dl_throttled)
 			sub_nr_running(global_rq_of_rt_rq(rt_rq), 1);
 	}
 
