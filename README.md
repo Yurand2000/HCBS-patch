@@ -1,6 +1,6 @@
 # Hierarchical Constant Bandwidth Server
 
-[![Static Badge](https://img.shields.io/badge/release-v6-green)](https://lore.kernel.org/all/20260608121546.69910-1-yurand2000@gmail.com/)
+[![Static Badge](https://img.shields.io/badge/release-v7-green)](https://lore.kernel.org/all/20261109163616.195264-1-yurand2000@gmail.com/)
 [![Static Badge](https://img.shields.io/badge/DOI-10.1109/DCOSS--IoT65416.2025.00070-blue)](https://doi.org/10.1109/DCOSS-IoT65416.2025.00070)
 
 Work-in-progress set of patches for Hierarchical Constant Bandwidth Server (HCBS).
@@ -26,9 +26,10 @@ The repository work is organized in branches. The main branch, which contains th
 - [**master**](https://github.com/Yurand2000/HCBS-patch/tree/master): the Linux kernel latest version.
 - [**rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/rt-cgroups): the latest WIP for the HCBS patchset.
 - **submission-######-rt-cgroups**: HCBS submitted patches, at a given point in time (Example *submission-250929-rt-cgroups* refers to the RFC v3 submission made in September 29th, 2025).
-    + [**submission-260608-rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/submission-260608-rt-cgroups) is the latest RFC v6 submission.
+    + [**submission-261109-rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/submission-261109-rt-cgroups) is the latest RFC v7 submission.
+    + [**submission-260608-rt-cgroups**](https://github.com/Yurand2000/HCBS-patch/tree/submission-260608-rt-cgroups) is RFC v6 submission.
 - **rt-cgroups-######**: a backup for the patchset at a given point in time (Example *rt-cgroup-250905* is a backup of September 9th, 2025).
-- **rt-cgroups-multi-######**: Latest working versions for the Multi-CPU feature, which may be possibly behind the latest **rt-cgroups** master.
+- **rt-cgroups-multi-######**: Latest working versions for the Multi-CPU feature, before the merge in RFC v7.
 
 #### Other and Legacy branches:
 - **rt-cgroups-devel-######**: Work-in-progress code that is not anymore on the main WIP branch.
